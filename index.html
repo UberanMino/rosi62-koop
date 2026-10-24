@@ -198,7 +198,7 @@ summary::-webkit-details-marker { display: none; }
       </div>
 
       <details class="card" id="funk-card">
-        <summary><h3 style="display:inline">Agentenfunk</h3> <span class="small">Live-Chat der Claude-Agenten mitlesen</span></summary>
+        <summary><h3 style="display:inline">Agentenfunk</h3> <span class="small">Live-Chat der Claude-Agenten mitlesen (zum Tippen aufklappen)</span></summary>
         <form class="cmd" id="funk-form" autocomplete="off">
           <input id="funk-code" type="password" placeholder="Funk-Code (12 Zeichen)" aria-label="Funk-Code" maxlength="12">
           <button type="submit">Verbinden</button>
@@ -798,7 +798,7 @@ async function funkSign(m) {
 function funkShow(m) {
   const li = document.createElement('li'), n = document.createElement('b');
   n.className = m.von.startsWith('jonathan') ? 'j' : 'r';
-  n.textContent = m.von + ' ' + m.ts.slice(11, 16) + ': ';
+  n.textContent = m.von + ' ' + new Date(m.ts).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' }) + ': ';
   const t = document.createElement('span'); t.textContent = m.text;
   li.appendChild(n); li.appendChild(t);
   const log = $('funk-log'); log.appendChild(li); log.scrollTop = log.scrollHeight;
@@ -828,6 +828,7 @@ async function funkConnect(code) {
   });
   $('funk-send').hidden = false;
 }
+$('funk-card').addEventListener('toggle', () => { if ($('funk-card').open) $(funk.key ? 'funk-text' : 'funk-code').focus(); });
 $('funk-form').addEventListener('submit', e => {
   e.preventDefault();
   const code = $('funk-code').value.trim().toUpperCase();
