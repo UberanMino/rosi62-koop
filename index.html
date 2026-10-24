@@ -503,6 +503,11 @@ function hostOnGuest(conn, m) {
   net.seen[conn.peer] = Date.now();
   if (typeof m.pid === 'string' && /^p[a-z0-9]{6,16}$/.test(m.pid)) net.pidOf[conn.peer] = m.pid;
   if (m.type === 'hallo') { conn.send({ type: 'liste', list: view.confirmed }); sendRoles(); }
+  // Abgleich: Der Relay garantiert keine Zustellung. Weicht der Stand des Gasts ab, bekommt er die ganze Liste neu.
+  if (m.type === 'ping') {
+    const last = view.confirmed.length ? view.confirmed[view.confirmed.length - 1].id : '';
+    if (m.n !== view.confirmed.length || m.last !== last) conn.send({ type: 'liste', list: view.confirmed });
+  }
   if (m.type === 'zug') hostAccept(m.a, conn);
   if (m.type === 'rolle' && (WHO.includes(m.rolle) || m.rolle === null)) {
     // Eine Figur, die schon jemand anderes hat, wird nicht vergeben
@@ -642,7 +647,8 @@ function guestConnected(raw, via) {
   net.ping = setInterval(() => {
     if (net.conn !== conn || conn.open === false) return;
     view.pending = view.pending.filter(p => Date.now() - (p.ts || 0) < 30000);
-    conn.send({ type: net.gotList ? 'ping' : 'hallo' });
+    const last = view.confirmed.length ? view.confirmed[view.confirmed.length - 1].id : '';
+    conn.send(net.gotList ? { type: 'ping', n: view.confirmed.length, last } : { type: 'hallo' });
     if (WHO.includes(view.role)) conn.send({ type: 'rolle', rolle: view.role });
     view.pending.forEach(z => conn.send({ type: 'zug', a: z }));
     rebuild(); render();
