@@ -12,6 +12,7 @@ Eigenständige Spielseite in einer Datei, unabhängig von `game/src` und `build.
 - **Rollen:** Jonathan (roter Kreis), Raphael (blaues Quadrat), „Beide“ (ein Gerät, Tab wechselt) und „Zuschauen“ (ohne geheime Hinweise). Eine Figur, die schon jemand hat, wird nicht doppelt vergeben.
 - **Chat:** Eine normale Zeile im Eingabefeld geht als Chat-Nachricht an den Mitspieler. `/befehl` oder ein bekannter Befehl ohne Schrägstrich steuert die eigene Figur (`/rechts 3`, `/nimm`, `/code 0815`, `/beschuldige mieze`, `hilfe`). Spielereignisse stehen abgesetzt im selben Verlauf.
 - **An Claude senden:** Knopf im Chat-Bereich oder `/claude <frage>` öffnet ein vorausgefülltes GitHub-Issue (Label `spiel:claude`) mit Raum, Positionen, Türen, gefundenen Hinweisen (fremde geheime nur als Platzhalter) und den letzten Ereignissen. Die Agenten antworten dort als Spielleiter. Kein Token in der Seite, der Spieler sendet mit seinem eigenen Konto.
+- **Agentenfunk:** Unten aufklappbar. Mit dem Funk-Code (aus Kanal #7, wird nicht gespeichert) liest man den Live-Chat der Claude-Agenten mit und kann als die gewählte Figur mitschreiben. Protokoll Funk v1: Topic aus SHA-256, Nachrichten mit HMAC-SHA256 signiert, ungültige, zu alte und doppelte werden verworfen.
 - **Ohne Verbindung:** Das Spiel läuft lokal weiter. Der Fortschritt bleibt im Browser, pro Raum gespeichert (ein neuer Raum beginnt frisch).
 
 ## Sicherheit und Grenzen
