@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <style>body{margin:0;font:14px system-ui,sans-serif}[hidden]{display:none!important}</style>
 <title>Rosi 62 Koop</title>
+<link rel="icon" href="data:,">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Jost:wght@400;500;700&family=IBM+Plex+Mono:wght@400;500&display=swap">
@@ -444,12 +445,14 @@ async function act(a) {
    Zwei Wege: direkt per WebRTC (PeerJS) und als Ausweichweg ein öffentlicher MQTT-Broker
    (WebSocket). Der Host ist auf beiden Wegen erreichbar, der Gast versucht erst direkt und
    nimmt nach 5 s ohne Verbindung den Relay. Mit ?relay=1 geht der Gast sofort über den Relay. */
-const net = { peer: null, mq: null, host: false, code: null, conns: [], conn: null, roles: {}, via: null, seen: {} };
+const net = { peer: null, mq: null, host: false, code: null, conns: [], conn: null, roles: {}, via: null, seen: {}, pidOf: {} };
 const PREFIX = 'rosi62koop-';
 const RELAY_URLS = ['wss://broker.hivemq.com:8884/mqtt', 'wss://test.mosquitto.org:8081', 'wss://broker.emqx.io:8084/mqtt'];
 const RELAY_SALT = 'r62k-7f3a91';
 const FORCE_RELAY = /[?&]relay=1/.test(location.search);
 const GID = 'g' + Math.random().toString(36).slice(2, 10);
+/* Stabile Spieler-ID über Neuladen hinweg: Der Host gibt einer bekannten ID ihre Figur sofort zurück */
+const PID = (() => { try { let p = localStorage.getItem('rosi62-pid'); if (!/^p[a-z0-9]{6,16}$/.test(p || '')) { p = 'p' + Math.random().toString(36).slice(2, 12); localStorage.setItem('rosi62-pid', p); } return p; } catch (e) { return 'p' + Math.random().toString(36).slice(2, 12); } })();
 function netSay(t, err) { const m = $('net-msg'); m.textContent = t || ''; m.classList.toggle('err', !!err); }
 function saveLocal() { try { localStorage.setItem('rosi62-zuege', JSON.stringify(view.confirmed.slice(-1000))); } catch (e) {} }
 function loadLocal() { try { const l = JSON.parse(localStorage.getItem('rosi62-zuege') || '[]'); if (Array.isArray(l)) view.confirmed = l.map(cleanZug).filter(Boolean); } catch (e) {} }
@@ -498,16 +501,19 @@ function newCode() { const A = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; let c = ''; f
 function hostOnGuest(conn, m) {
   if (!m || typeof m !== 'object') return;
   net.seen[conn.peer] = Date.now();
+  if (typeof m.pid === 'string' && /^p[a-z0-9]{6,16}$/.test(m.pid)) net.pidOf[conn.peer] = m.pid;
   if (m.type === 'hallo') { conn.send({ type: 'liste', list: view.confirmed }); sendRoles(); }
   if (m.type === 'zug') hostAccept(m.a, conn);
   if (m.type === 'rolle' && (WHO.includes(m.rolle) || m.rolle === null)) {
     // Eine Figur, die schon jemand anderes hat, wird nicht vergeben
     // Relay-Gäste ohne Lebenszeichen seit 15 s zählen nicht mehr (z. B. nach einem Neuladen)
-    const stale = k => k.startsWith('mq:') && Date.now() - (net.seen[k] || 0) > 15000;
-    Object.keys(net.roles).forEach(k => { if (k !== conn.peer && net.roles[k] === m.rolle && stale(k)) delete net.roles[k]; });
+    // Alte Verbindung desselben Spielers (gleiche ID, z. B. nach Neuladen) oder ohne Lebenszeichen seit 10 s gibt die Figur ab
+    const stale = k => k.startsWith('mq:') && Date.now() - (net.seen[k] || 0) > 10000;
+    const samePlayer = k => net.pidOf[conn.peer] && net.pidOf[k] === net.pidOf[conn.peer];
+    Object.keys(net.roles).forEach(k => { if (k !== conn.peer && k !== 'host' && (samePlayer(k) || (net.roles[k] === m.rolle && stale(k)))) delete net.roles[k]; });
     const taken = m.rolle && Object.entries(net.roles).some(([k, r]) => k !== conn.peer && r === m.rolle);
     if (m.rolle && taken) conn.send({ type: 'belegt', rolle: m.rolle });
-    if (m.rolle && !taken) net.roles[conn.peer] = m.rolle; else delete net.roles[conn.peer];
+    if (m.rolle && !taken) { net.roles[conn.peer] = m.rolle; conn.send({ type: 'rolle-ok', rolle: m.rolle }); } else delete net.roles[conn.peer];
     sendRoles();
   }
   if (m.type === 'tschuess') { delete net.roles[conn.peer]; sendRoles(); }
@@ -516,9 +522,9 @@ function hostOnGuest(conn, m) {
 setInterval(() => {
   if (!net.host) return;
   let changed = false;
-  Object.keys(net.roles).forEach(k => { if (k.startsWith('mq:') && Date.now() - (net.seen[k] || 0) > 20000) { delete net.roles[k]; changed = true; } });
+  Object.keys(net.roles).forEach(k => { if (k.startsWith('mq:') && Date.now() - (net.seen[k] || 0) > 12000) { delete net.roles[k]; changed = true; } });
   if (changed) sendRoles();
-}, 5000);
+}, 3000);
 
 /* Verbindet zum ersten erreichbaren Broker. onReady(client) bei Verbindung, onMessage(topic, text) für Nachrichten. */
 async function connectRelay(onReady, onMessage) {
@@ -610,13 +616,21 @@ function guestOnHost(m) {
     view.confirmed = trimToReset([...view.confirmed, z]);
     if (view.pending.some(p => p.id === z.id)) netSay('Verbunden mit Raum ' + net.code + viaText() + '.');
   }
-  if (m.type === 'belegt' && WHO.includes(m.rolle)) { netSay(TEXTE.rollenwahl.belegt + ' Ich versuche es weiter …', true); }
+  if (m.type === 'rolle-ok' && m.rolle === view.role) netSay('Verbunden mit Raum ' + net.code + viaText() + '. Du spielst ' + NAME[view.role] + '.');
+  if (m.type === 'belegt' && WHO.includes(m.rolle)) {
+    // Ist die andere Figur frei, nehmen wir automatisch die (z. B. wenn im selben Browser die Rolle des Hosts gespeichert war)
+    const free = WHO.find(w => w !== m.rolle && !Object.values(view.peers).includes(w));
+    if (m.rolle === view.role && free && !net.autoSwitched) { net.autoSwitched = true; setRole(free); netSay(NAME[m.rolle] + ' spielt schon jemand, du spielst ' + NAME[free] + '.'); }
+    else netSay(TEXTE.rollenwahl.belegt + ' Ich versuche es weiter …', true);
+  }
   if (m.type === 'rollen' && Array.isArray(m.roles)) { view.peers = Object.fromEntries(m.roles.filter(r => WHO.includes(r)).map((r, i) => ['p' + i, r])); }
   const ids = new Set(view.confirmed.map(a => a.id)); view.pending = view.pending.filter(p => !ids.has(p.id));
   rebuild(); render();
 }
-function guestConnected(conn, via) {
+function guestConnected(raw, via) {
   if (net.conn && net.conn.open) return;
+  // Jede Nachricht trägt die stabile Spieler-ID
+  const conn = { get open() { return raw.open !== false; }, send: msg => raw.send({ ...msg, pid: PID }) };
   net.conn = conn; net.via = via; view.mode = 'live';
   netSay('Verbunden mit Raum ' + net.code + viaText() + '.');
   conn.send({ type: 'hallo' });
@@ -674,7 +688,7 @@ function leaveRoom() {
   try { if (net.mq) net.mq.end(true); } catch (e) {}
   (net.mqs || []).forEach(c => { try { c.end(true); } catch (e) {} });
   clearInterval(net.ping);
-  Object.assign(net, { peer: null, mq: null, conns: [], conn: null, roles: {}, via: null, seen: {}, relayTrying: false, base: null, broker: null, mqs: [], gotList: false });
+  Object.assign(net, { peer: null, mq: null, conns: [], conn: null, roles: {}, via: null, seen: {}, relayTrying: false, base: null, broker: null, mqs: [], gotList: false, pidOf: {}, autoSwitched: false });
   view.mode = 'local';
 }
 window.addEventListener('pagehide', () => { try { if (net.conn && net.conn.open) net.conn.send({ type: 'tschuess' }); } catch (e) {} });
