@@ -606,8 +606,11 @@ function guestOnHost(m) {
   if (!m || typeof m !== 'object') return;
   if (m.type === 'liste' && Array.isArray(m.list)) { net.gotList = true; view.confirmed = trimToReset(m.list.map(cleanZug).filter(Boolean)); }
   const z = m.type === 'zug' ? cleanZug(m.a) : null;
-  if (z && !view.confirmed.some(x => x.id === z.id)) { view.confirmed = trimToReset([...view.confirmed, z]); }
-  if (m.type === 'belegt' && WHO.includes(m.rolle)) { netSay(TEXTE.rollenwahl.belegt, true); }
+  if (z && !view.confirmed.some(x => x.id === z.id)) {
+    view.confirmed = trimToReset([...view.confirmed, z]);
+    if (view.pending.some(p => p.id === z.id)) netSay('Verbunden mit Raum ' + net.code + viaText() + '.');
+  }
+  if (m.type === 'belegt' && WHO.includes(m.rolle)) { netSay(TEXTE.rollenwahl.belegt + ' Ich versuche es weiter …', true); }
   if (m.type === 'rollen' && Array.isArray(m.roles)) { view.peers = Object.fromEntries(m.roles.filter(r => WHO.includes(r)).map((r, i) => ['p' + i, r])); }
   const ids = new Set(view.confirmed.map(a => a.id)); view.pending = view.pending.filter(p => !ids.has(p.id));
   rebuild(); render();
@@ -618,6 +621,18 @@ function guestConnected(conn, via) {
   netSay('Verbunden mit Raum ' + net.code + viaText() + '.');
   conn.send({ type: 'hallo' });
   if (WHO.includes(view.role)) conn.send({ type: 'rolle', rolle: view.role });
+  // Lebenszeichen und Nachsenden auf beiden Wegen: Der Relay speichert nichts, und eine Figur kann kurz noch
+  // von einer alten Verbindung belegt sein (Neuladen). Rolle und unbestätigte Züge daher alle 4 s erneut
+  // schicken, der Host verwirft Doppelte über die id. Züge, die 30 s unbestätigt bleiben, werden verworfen.
+  clearInterval(net.ping);
+  net.ping = setInterval(() => {
+    if (net.conn !== conn || conn.open === false) return;
+    view.pending = view.pending.filter(p => Date.now() - (p.ts || 0) < 30000);
+    conn.send({ type: net.gotList ? 'ping' : 'hallo' });
+    if (WHO.includes(view.role)) conn.send({ type: 'rolle', rolle: view.role });
+    view.pending.forEach(z => conn.send({ type: 'zug', a: z }));
+    rebuild(); render();
+  }, 4000);
   render();
 }
 function joinRelay() {
@@ -628,18 +643,6 @@ function joinRelay() {
     client.subscribe(topic('h2g'));
     const conn = { open: true, send: msg => client.publish(topic('g2h'), JSON.stringify({ ...msg, from: GID })) };
     guestConnected(conn, 'relay');
-    // Lebenszeichen, damit der Host die Figur reserviert hält
-    // Lebenszeichen und Nachsenden: Der Relay speichert nichts, Nachrichten vor dem Abo des Hosts gehen verloren.
-    // Deshalb Rolle und unbestätigte Züge regelmäßig erneut schicken (der Host verwirft Doppelte über die id).
-    const resend = () => {
-      if (!client.connected) return;
-      view.pending = view.pending.filter(p => Date.now() - (p.ts || 0) < 30000);
-      conn.send({ type: net.gotList ? 'ping' : 'hallo' });
-      if (WHO.includes(view.role)) conn.send({ type: 'rolle', rolle: view.role });
-      view.pending.forEach(z => conn.send({ type: 'zug', a: z }));
-    };
-    setTimeout(resend, 2500);
-    net.ping = setInterval(resend, view.pending.length ? 3000 : 6000);
   }, (t, txt) => { if (txt.length > 200000) return; let m; try { m = JSON.parse(txt); } catch (e) { return; } if (net.via === 'relay') guestOnHost(m); });
 }
 function joinRoom(code) {
