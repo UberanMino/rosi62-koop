@@ -481,7 +481,7 @@ function viaText() { return net.via === 'relay' ? ' (über Relay)' : net.via ===
 /* Host verteilt an alle direkten Verbindungen und, falls aktiv, über den Relay */
 function broadcast(msg) {
   net.conns.forEach(c => { if (c.open) try { c.send(msg); } catch (e) {} });
-  if (net.host && net.mq && net.mq.connected) try { net.mq.publish(topic('h2g'), JSON.stringify(msg)); } catch (e) {}
+  if (net.host) (net.mqs || []).forEach(c => { if (c.connected) try { c.publish(topic('h2g'), JSON.stringify(msg)); } catch (e) {} });
 }
 /* Host nimmt Züge an. Von Gästen nur für die eigene Figur der Verbindung und ohne Neustart. */
 function hostAccept(raw, conn) {
@@ -567,16 +567,33 @@ function hostRoom(code) {
       else console.warn('PeerJS (Host):', e && e.type);
     });
   }
-  // Weg 2: Relay (MQTT)
-  connectRelay(client => {
-    client.subscribe(topic('g2h'));
-    ready();
-  }, (t, txt) => {
-    if (txt.length > 20000) return;
-    let m; try { m = JSON.parse(txt); } catch (e) { return; }
-    if (!m || typeof m.from !== 'string' || !/^g[a-z0-9]{1,12}$/.test(m.from)) return;
-    const conn = { peer: 'mq:' + m.from, send: msg => net.mq.publish(topic('h2g'), JSON.stringify(msg)) };
-    hostOnGuest(conn, m);
+  // Weg 2: Relay (MQTT). Der Host hört auf allen Brokern, damit ein Gast ihn auf jedem erreichbaren findet.
+  hostRelays(ready);
+}
+async function hostRelays(ready) {
+  if (typeof mqtt === 'undefined') return;
+  net.base = await relayBase(net.code);
+  const myCode = net.code;
+  net.mqs = [];
+  RELAY_URLS.forEach(url => {
+    let client;
+    try { client = mqtt.connect(url, { clientId: PREFIX + 'h' + GID, clean: true, reconnectPeriod: 5000, connectTimeout: 8000 }); } catch (e) { return; }
+    net.mqs.push(client);
+    client.on('connect', () => {
+      if (net.code !== myCode) { client.end(true); return; }
+      client.subscribe(topic('g2h'));
+      net.mq = net.mq || client; net.broker = net.broker || url;
+      ready();
+    });
+    client.on('error', e => console.warn('Relay', url, e && e.message));
+    client.on('message', (t, buf) => {
+      const txt = String(buf);
+      if (txt.length > 20000) return;
+      let m; try { m = JSON.parse(txt); } catch (e) { return; }
+      if (!m || typeof m.from !== 'string' || !/^g[a-z0-9]{1,12}$/.test(m.from)) return;
+      const conn = { peer: 'mq:' + m.from, send: msg => client.publish(topic('h2g'), JSON.stringify(msg)) };
+      hostOnGuest(conn, m);
+    });
   });
 }
 
@@ -637,8 +654,9 @@ function leaveRoom() {
   try { if (net.conn && net.conn.open) net.conn.send({ type: 'tschuess' }); } catch (e) {}
   try { if (net.peer) net.peer.destroy(); } catch (e) {}
   try { if (net.mq) net.mq.end(true); } catch (e) {}
+  (net.mqs || []).forEach(c => { try { c.end(true); } catch (e) {} });
   clearInterval(net.ping);
-  Object.assign(net, { peer: null, mq: null, conns: [], conn: null, roles: {}, via: null, seen: {}, relayTrying: false, base: null, broker: null });
+  Object.assign(net, { peer: null, mq: null, conns: [], conn: null, roles: {}, via: null, seen: {}, relayTrying: false, base: null, broker: null, mqs: [] });
   view.mode = 'local';
 }
 window.addEventListener('pagehide', () => { try { if (net.conn && net.conn.open) net.conn.send({ type: 'tschuess' }); } catch (e) {} });
