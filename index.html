@@ -600,7 +600,7 @@ async function hostRelays(ready) {
 /* Gast: verarbeitet Nachrichten vom Host */
 function guestOnHost(m) {
   if (!m || typeof m !== 'object') return;
-  if (m.type === 'liste' && Array.isArray(m.list)) { view.confirmed = trimToReset(m.list.map(cleanZug).filter(Boolean)); }
+  if (m.type === 'liste' && Array.isArray(m.list)) { net.gotList = true; view.confirmed = trimToReset(m.list.map(cleanZug).filter(Boolean)); }
   const z = m.type === 'zug' ? cleanZug(m.a) : null;
   if (z && !view.confirmed.some(x => x.id === z.id)) { view.confirmed = trimToReset([...view.confirmed, z]); }
   if (m.type === 'rollen' && Array.isArray(m.roles)) { view.peers = Object.fromEntries(m.roles.filter(r => WHO.includes(r)).map((r, i) => ['p' + i, r])); }
@@ -624,7 +624,17 @@ function joinRelay() {
     const conn = { open: true, send: msg => client.publish(topic('g2h'), JSON.stringify({ ...msg, from: GID })) };
     guestConnected(conn, 'relay');
     // Lebenszeichen, damit der Host die Figur reserviert hält
-    net.ping = setInterval(() => { if (client.connected) conn.send({ type: 'hallo' }); }, 15000);
+    // Lebenszeichen und Nachsenden: Der Relay speichert nichts, Nachrichten vor dem Abo des Hosts gehen verloren.
+    // Deshalb Rolle und unbestätigte Züge regelmäßig erneut schicken (der Host verwirft Doppelte über die id).
+    const resend = () => {
+      if (!client.connected) return;
+      view.pending = view.pending.filter(p => Date.now() - (p.ts || 0) < 30000);
+      conn.send({ type: net.gotList ? 'ping' : 'hallo' });
+      if (WHO.includes(view.role)) conn.send({ type: 'rolle', rolle: view.role });
+      view.pending.forEach(z => conn.send({ type: 'zug', a: z }));
+    };
+    setTimeout(resend, 2500);
+    net.ping = setInterval(resend, view.pending.length ? 3000 : 6000);
   }, (t, txt) => { if (txt.length > 200000) return; let m; try { m = JSON.parse(txt); } catch (e) { return; } if (net.via === 'relay') guestOnHost(m); });
 }
 function joinRoom(code) {
@@ -656,7 +666,7 @@ function leaveRoom() {
   try { if (net.mq) net.mq.end(true); } catch (e) {}
   (net.mqs || []).forEach(c => { try { c.end(true); } catch (e) {} });
   clearInterval(net.ping);
-  Object.assign(net, { peer: null, mq: null, conns: [], conn: null, roles: {}, via: null, seen: {}, relayTrying: false, base: null, broker: null, mqs: [] });
+  Object.assign(net, { peer: null, mq: null, conns: [], conn: null, roles: {}, via: null, seen: {}, relayTrying: false, base: null, broker: null, mqs: [], gotList: false });
   view.mode = 'local';
 }
 window.addEventListener('pagehide', () => { try { if (net.conn && net.conn.open) net.conn.send({ type: 'tschuess' }); } catch (e) {} });
