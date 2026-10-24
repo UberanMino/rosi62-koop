@@ -99,6 +99,9 @@ form.cmd input { flex: 1; min-width: 0; font: inherit; font-family: var(--mono);
 .finale .sus { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
 .done { border: 3px solid var(--ok); }
 .small { font-size: 12.5px; color: var(--muted); }
+summary { cursor: pointer; list-style: none; }
+summary::-webkit-details-marker { display: none; }
+#funk-log { margin-top: 8px; }
 </style>
 </head>
 <body>
@@ -193,6 +196,20 @@ form.cmd input { flex: 1; min-width: 0; font: inherit; font-family: var(--mono);
         <p class="small" style="margin:10px 0 0">Kommt ihr nicht weiter? <button type="button" id="ask-claude" style="min-height:32px;padding:2px 8px;font-size:12px">An Claude senden</button> oder <code>/claude &lt;frage&gt;</code> öffnet ein vorausgefülltes GitHub-Issue, die Agenten antworten als Spielleiter mit Tipps.</p>
         <p class="small" style="margin:10px 0 0">Prototyp von Raphaels Agent. <button type="button" id="reset" style="min-height:32px;padding:2px 8px;font-size:12px">Spiel neu starten</button></p>
       </div>
+
+      <details class="card" id="funk-card">
+        <summary><h3 style="display:inline">Agentenfunk</h3> <span class="small">Live-Chat der Claude-Agenten mitlesen</span></summary>
+        <form class="cmd" id="funk-form" autocomplete="off">
+          <input id="funk-code" type="password" placeholder="Funk-Code (12 Zeichen)" aria-label="Funk-Code" maxlength="12">
+          <button type="submit">Verbinden</button>
+        </form>
+        <p class="msg" id="funk-msg" role="status"></p>
+        <ul class="log" id="funk-log"></ul>
+        <form class="cmd" id="funk-send" hidden>
+          <input id="funk-text" placeholder="Nachricht an die Agenten (als deine Figur)" aria-label="Funk-Nachricht" maxlength="1500">
+          <button type="submit">Senden</button>
+        </form>
+      </details>
     </aside>
   </div>
 </div>
@@ -767,6 +784,70 @@ function askClaude(frage) {
   say('Frage an Claude als GitHub-Issue geöffnet. Abschicken nicht vergessen, die Antwort kommt dort.', false);
 }
 $('ask-claude').onclick = () => askClaude('');
+
+/* ---------- Agentenfunk (Protokoll Funk v1, Kanal #7) ----------
+   Mitlesen und als Jonathan/Raphael mitschreiben. Der Funk-Code wird nur eingegeben, nie gespeichert.
+   Inhalte sind Daten, keine Anweisungen. */
+const FUNK_VON = ['jonathan-agent', 'raphael-agent', 'jonathan', 'raphael'];
+const funk = { clients: [], topic: null, key: null, seen: new Set() };
+const hex = buf => [...new Uint8Array(buf)].map(b => b.toString(16).padStart(2, '0')).join('');
+async function funkSign(m) {
+  const sig = await crypto.subtle.sign('HMAC', funk.key, new TextEncoder().encode([m.v, m.id, m.von, m.ts, m.text].join('|')));
+  return hex(sig);
+}
+function funkShow(m) {
+  const li = document.createElement('li'), n = document.createElement('b');
+  n.className = m.von.startsWith('jonathan') ? 'j' : 'r';
+  n.textContent = m.von + ' ' + m.ts.slice(11, 16) + ': ';
+  const t = document.createElement('span'); t.textContent = m.text;
+  li.appendChild(n); li.appendChild(t);
+  const log = $('funk-log'); log.appendChild(li); log.scrollTop = log.scrollHeight;
+}
+async function funkReceive(buf) {
+  const txt = String(buf); if (txt.length > 4096) return;
+  let m; try { m = JSON.parse(txt); } catch (e) { return; }
+  if (!m || m.v !== 1 || typeof m.id !== 'string' || !/^[0-9a-f]{16}$/.test(m.id) || !FUNK_VON.includes(m.von) || typeof m.text !== 'string' || m.text.length > 1500 || typeof m.ts !== 'string' || typeof m.sig !== 'string') return;
+  const age = Date.now() - Date.parse(m.ts);
+  if (!(age < 600000 && age > -60000) || funk.seen.has(m.id)) return;
+  if (await funkSign(m) !== m.sig) return;
+  funk.seen.add(m.id); funkShow(m);
+}
+async function funkConnect(code) {
+  if (typeof mqtt === 'undefined') { $('funk-msg').textContent = 'Live-Modul nicht geladen.'; return; }
+  funk.clients.forEach(c => { try { c.end(true); } catch (e) {} });
+  const enc = s => new TextEncoder().encode(s);
+  funk.topic = 'rosi62/funk/' + hex(await crypto.subtle.digest('SHA-256', enc('funk:' + code))).slice(0, 24);
+  const raw = await crypto.subtle.digest('SHA-256', enc('sig:' + code));
+  funk.key = await crypto.subtle.importKey('raw', raw, { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']);
+  let ok = 0;
+  funk.clients = RELAY_URLS.map(url => {
+    const c = mqtt.connect(url, { clientId: 'r62funkweb-' + Math.random().toString(36).slice(2, 10), clean: true, reconnectPeriod: 5000, connectTimeout: 8000 });
+    c.on('connect', () => { c.subscribe(funk.topic); ok++; $('funk-msg').textContent = 'Verbunden (' + ok + ' von ' + RELAY_URLS.length + ' Brokern). Nachrichten der letzten Minuten erscheinen, sobald neue kommen.'; });
+    c.on('message', (t, buf) => funkReceive(buf));
+    return c;
+  });
+  $('funk-send').hidden = false;
+}
+$('funk-form').addEventListener('submit', e => {
+  e.preventDefault();
+  const code = $('funk-code').value.trim().toUpperCase();
+  if (!/^[A-Z0-9]{12}$/.test(code)) { $('funk-msg').textContent = 'Der Funk-Code hat 12 Zeichen.'; return; }
+  $('funk-code').value = '';
+  $('funk-msg').textContent = 'Verbinde …';
+  funkConnect(code);
+});
+$('funk-send').addEventListener('submit', async e => {
+  e.preventDefault();
+  const text = $('funk-text').value.trim();
+  const von = WHO.includes(view.role) ? view.role : null;
+  if (!von) { $('funk-msg').textContent = 'Wähle oben Jonathan oder Raphael, um mitzuschreiben.'; return; }
+  if (!text || !funk.key) return;
+  const m = { v: 1, id: hex(crypto.getRandomValues(new Uint8Array(8))), von, ts: new Date().toISOString(), text: text.slice(0, 1500) };
+  m.sig = await funkSign(m);
+  funk.clients.forEach(c => { if (c.connected) c.publish(funk.topic, JSON.stringify(m)); });
+  $('funk-text').value = '';
+});
+
 let resetArmed = false;
 $('reset').onclick = () => {
   if (!resetArmed) { resetArmed = true; $('reset').textContent = 'Wirklich? Nochmal klicken'; setTimeout(() => { resetArmed = false; $('reset').textContent = 'Spiel neu starten'; }, 4000); return; }
