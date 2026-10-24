@@ -1,0 +1,571 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<style>body{margin:0;font:14px system-ui,sans-serif}[hidden]{display:none!important}</style>
+<title>Rosi 62 Koop</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Jost:wght@400;500;700&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: Bauhaus-Plakat – Spielbrett als quadratisches Raster links, Akte (Story, Notizbuch, Befehle) rechts; auf dem Handy untereinander. */
+:root {
+  --paper: #EFEBE2; --ink: #1E1D1A; --muted: #5E5A52; --line: #CFC8B9; --tile: #F8F6F1; --wall: #2B2A27;
+  --red: #C8372D; --blue: #1E4E9C; --yellow: #E8B520; --ok: #2F6B5E;
+  --on-color: #FBFAF6;
+  --display: "Jost", "Futura", "Century Gothic", system-ui, sans-serif;
+  --body: "Jost", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --mono: "IBM Plex Mono", ui-monospace, Menlo, Consolas, monospace;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --paper: #1A1917; --ink: #ECE7DC; --muted: #A9A296; --line: #3A3732; --tile: #24221F; --wall: #0E0D0C;
+  --red: #E0574C; --blue: #6F9BE6; --yellow: #F0C64A; --ok: #6DB6A2; --on-color: #141311; color-scheme: dark } }
+:root[data-theme="dark"] {
+  --paper: #1A1917; --ink: #ECE7DC; --muted: #A9A296; --line: #3A3732; --tile: #24221F; --wall: #0E0D0C;
+  --red: #E0574C; --blue: #6F9BE6; --yellow: #F0C64A; --ok: #6DB6A2; --on-color: #141311; color-scheme: dark }
+
+* { box-sizing: border-box; }
+body { background: var(--paper); color: var(--ink); font-family: var(--body); font-size: 16px; line-height: 1.45; }
+.wrap { max-width: 1120px; margin: 0 auto; padding-block: 20px 40px;
+  padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); }
+header { display: flex; flex-wrap: wrap; align-items: end; justify-content: space-between; gap: 12px 24px;
+  border-bottom: 2px solid var(--ink); padding-bottom: 12px; margin-bottom: 20px; }
+h1 { font-family: var(--display); font-weight: 500; font-size: clamp(1.8rem, 1.2rem + 2.4vw, 2.8rem); line-height: 1; margin: 0; letter-spacing: -0.02em; }
+h1 .dot { display: inline-block; width: .55em; height: .55em; border-radius: 50%; background: var(--red); margin-right: .12em; vertical-align: .05em; }
+h1 .sq { display: inline-block; width: .5em; height: .5em; background: var(--blue); margin-right: .25em; vertical-align: .07em; }
+.status { display: flex; flex-wrap: wrap; gap: 8px; font-family: var(--mono); font-size: 13px; }
+.chip { display: inline-flex; align-items: center; gap: 6px; border: 1px solid var(--line); padding: 4px 10px; border-radius: 999px; background: var(--tile); }
+.chip i { width: 8px; height: 8px; border-radius: 50%; background: var(--muted); }
+.chip.on i { background: var(--ok); }
+.grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 400px); gap: 24px; align-items: start; }
+@media (max-width: 860px) { .grid { grid-template-columns: minmax(0, 1fr); } }
+
+.levelbar { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 8px; margin-bottom: 10px; }
+.levelbar h2 { font-family: var(--display); font-weight: 500; font-size: 1.4rem; margin: 0; text-wrap: balance; }
+.meta { font-family: var(--mono); font-size: 13px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.board { width: 100%; max-width: 620px; aspect-ratio: 1; display: grid; grid-template-columns: repeat(9, 1fr); gap: 3px;
+  background: var(--line); border: 3px solid var(--ink); padding: 3px; }
+.cell { position: relative; background: var(--tile); display: grid; place-items: center; min-width: 0; }
+.cell.wall { background: var(--wall); }
+.cell.goal { background: color-mix(in srgb, var(--yellow) 30%, var(--tile)); }
+.cell.goal::after { content: ""; position: absolute; inset: 22%; border: 2px dashed var(--ink); opacity: .45; }
+.mark { position: absolute; inset: 0; display: grid; place-items: center; font-family: var(--mono); font-size: clamp(9px, 1.6vw, 13px); font-weight: 500; color: var(--muted); }
+.door { position: absolute; inset: 8%; border: 3px solid var(--ink); background: var(--paper); display: grid; place-items: center; font-family: var(--mono); font-size: clamp(9px, 1.5vw, 12px); }
+.door.open { background: transparent; border-style: dashed; opacity: .55; }
+.door.code { border-color: var(--red); }
+.switch { position: absolute; inset: 28%; border-radius: 50%; border: 3px solid var(--yellow); }
+.switch.pressed { background: var(--yellow); }
+.key { position: absolute; inset: 30% 20%; background: var(--yellow); clip-path: polygon(0 35%, 55% 35%, 55% 0, 100% 0, 100% 100%, 55% 100%, 55% 65%, 0 65%); }
+.clue { position: absolute; inset: 32%; background: var(--ink); transform: rotate(8deg); opacity: .8; }
+.clue.found { opacity: .18; }
+.piece { position: absolute; inset: 14%; z-index: 2; transition: transform .12s ease-out; }
+.piece.j { background: var(--red); border-radius: 50%; }
+.piece.r { background: var(--blue); }
+.piece.me { outline: 3px solid var(--ink); outline-offset: 2px; }
+.piece .k { position: absolute; right: -10%; top: -10%; width: 40%; height: 40%; background: var(--yellow); border: 2px solid var(--ink); border-radius: 50%; }
+@media (prefers-reduced-motion: reduce) { .piece { transition: none; } }
+.legend { display: flex; flex-wrap: wrap; gap: 6px 14px; margin-top: 10px; font-size: 13px; color: var(--muted); }
+
+aside { display: grid; gap: 16px; min-width: 0; }
+.card { background: var(--tile); border: 1px solid var(--line); padding: 14px 16px; min-width: 0; }
+.card h3 { font-family: var(--display); font-weight: 500; font-size: 1.05rem; margin: 0 0 8px; text-transform: uppercase; letter-spacing: .06em; }
+.story { border-left: 8px solid var(--yellow); }
+.story p { margin: 0 0 8px; }
+.hint { font-size: 14px; color: var(--muted); margin: 0; }
+.roles { display: flex; flex-wrap: wrap; gap: 8px; }
+button { font: inherit; cursor: pointer; border: 2px solid var(--ink); background: var(--paper); color: var(--ink); padding: 8px 12px; min-height: 44px; }
+button:hover { background: var(--tile); }
+button:focus-visible, input:focus-visible { outline: 3px solid var(--yellow); outline-offset: 2px; }
+button.sel-j { background: var(--red); color: var(--on-color); border-color: var(--red); }
+button.sel-r { background: var(--blue); color: var(--on-color); border-color: var(--blue); }
+button.primary { background: var(--ink); color: var(--paper); }
+button:disabled { opacity: .45; cursor: not-allowed; }
+.pad { display: grid; grid-template-columns: repeat(3, 48px); gap: 6px; }
+.pad button { padding: 0; }
+.controls { display: flex; flex-wrap: wrap; gap: 14px; align-items: start; }
+.acts { display: flex; flex-wrap: wrap; gap: 6px; }
+form.cmd { display: flex; gap: 6px; margin-top: 10px; }
+form.cmd input { flex: 1; min-width: 0; font: inherit; font-family: var(--mono); padding: 8px 10px; border: 2px solid var(--ink); background: var(--paper); color: var(--ink); min-height: 44px; }
+.msg { min-height: 1.4em; margin-top: 8px; font-size: 14px; }
+.msg.err { color: var(--red); }
+.note { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+.note li { font-size: 14px; border-left: 4px solid var(--line); padding-left: 10px; }
+.note li.secret { border-color: var(--blue); }
+.note li.hidden { color: var(--muted); font-style: italic; }
+.log { list-style: none; margin: 0; padding: 0; max-height: 220px; overflow: auto; font-family: var(--mono); font-size: 12.5px; display: grid; gap: 3px; }
+.log b.j { color: var(--red); } .log b.r { color: var(--blue); }
+.log .say { color: var(--ink); font-weight: 500; }
+.log li.ev { color: var(--muted); }
+.finale .sus { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+.done { border: 3px solid var(--ok); }
+.small { font-size: 12.5px; color: var(--muted); }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1><span class="dot"></span><span class="sq"></span>Rosi 62 Koop</h1>
+    <div class="status" aria-live="polite">
+      <span class="chip" id="st-mode">Verbinde …</span>
+      <span class="chip" id="st-j"><i></i>Jonathan</span>
+      <span class="chip" id="st-r"><i></i>Raphael</span>
+    </div>
+  </header>
+
+  <div class="grid">
+    <section aria-label="Spielbrett">
+      <div class="levelbar">
+        <h2 id="lv-title">…</h2>
+        <span class="meta" id="lv-meta"></span>
+      </div>
+      <div class="board" id="board" role="grid" aria-label="Raum, 9 mal 9 Felder"></div>
+      <div class="legend">
+        <span>● Jonathan</span><span>■ Raphael</span><span>▭ Tür</span><span>◯ Schalter</span><span>▬ Hinweis</span><span>⬚ Ziel</span>
+      </div>
+    </section>
+
+    <aside>
+      <div class="card story" id="story">
+        <h3>Fall</h3>
+        <p id="story-text"></p>
+        <p class="hint" id="hint"></p>
+      </div>
+
+      <div class="card">
+        <h3>Du spielst</h3>
+        <div class="roles">
+          <button type="button" id="role-j">Jonathan</button>
+          <button type="button" id="role-r">Raphael</button>
+          <button type="button" id="role-both">Beide (ein Gerät)</button>
+          <button type="button" id="role-watch">Zuschauen</button>
+        </div>
+        <p class="small" id="role-note">Wähle deine Figur. Im Modus „Beide“ wechselt Tab die Figur.</p>
+      </div>
+
+      <div class="card">
+        <h3>Zusammen spielen</h3>
+        <p class="small" style="margin:0 0 8px">Einer eröffnet einen Raum und schickt den Code, der andere tritt bei.</p>
+        <div class="roles">
+          <button type="button" id="host-btn">Raum eröffnen</button>
+        </div>
+        <form class="cmd" id="join-form">
+          <input id="join-code" autocomplete="off" placeholder="Code, z. B. K7QZP" aria-label="Raum-Code" maxlength="5">
+          <button type="submit">Beitreten</button>
+        </form>
+        <p class="msg" id="net-msg" role="status"></p>
+      </div>
+
+      <div class="card">
+        <h3>Befehle</h3>
+        <div class="controls">
+          <div class="pad" aria-label="Bewegen">
+            <span></span><button type="button" data-dir="hoch" aria-label="hoch">↑</button><span></span>
+            <button type="button" data-dir="links" aria-label="links">←</button><button type="button" data-dir="runter" aria-label="runter">↓</button><button type="button" data-dir="rechts" aria-label="rechts">→</button>
+          </div>
+          <div class="acts">
+            <button type="button" data-cmd="nimm">nimm</button>
+            <button type="button" data-cmd="gib">gib</button>
+            <button type="button" data-cmd="benutze">benutze</button>
+          </div>
+        </div>
+        <form class="cmd" id="cmd">
+          <input id="cmd-in" autocomplete="off" placeholder="Chat oder Befehl: hallo! · /rechts 3 · /code 2580" aria-label="Chat oder Befehl">
+          <button type="submit" class="primary">OK</button>
+        </form>
+        <div class="msg" id="msg" role="status"></div>
+        <div class="finale" id="finale" hidden>
+          <p id="fin-q" style="margin:10px 0 0"></p>
+          <div class="sus" id="fin-sus"></div>
+        </div>
+        <div id="next" hidden style="margin-top:10px">
+          <button type="button" class="primary" id="next-btn">Nächster Raum</button>
+        </div>
+      </div>
+
+      <div class="card">
+        <h3>Notizbuch <span class="small" id="nb-who"></span></h3>
+        <ul class="note" id="notes"></ul>
+      </div>
+
+      <div class="card">
+        <h3>Chat &amp; Verlauf</h3>
+        <ul class="log" id="log"></ul>
+        <p class="small" style="margin:10px 0 0">Prototyp von Raphaels Agent. <button type="button" id="reset" style="min-height:32px;padding:2px 8px;font-size:12px">Spiel neu starten</button></p>
+      </div>
+    </aside>
+  </div>
+</div>
+
+<script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js" integrity="sha384-nlUQ8ZqCbvStErob+biJNzSgltf6urV3VGqhfIfzhmg9RXmpeRm76ELw0pYnKlTR" crossorigin="anonymous"></script>
+<script>
+const LEVELS = [{"id":"01-flur","title":"Flur – Der Tatort","author":"Jonathan","size":9,"story":{"intro":"Am Morgen nach dem Krimidinner ist der goldene Wanderpokal „Rosi 62“ verschwunden. Im Flur führen Schuhabdrücke hinein, aber keine wieder hinaus. Der Täter ist also noch im Haus.","outro":"Der erste Zettel ist gefunden. Er klingt nach einer Herausforderung, und genau die lieben wir."},"walls":[[4,0],[4,1],[4,2],[4,3],[4,5],[4,6],[4,7],[4,8]],"start":{"jonathan":[0,4],"raphael":[0,3]},"items":[{"type":"clue","at":[2,1],"text":"Ein Zettel auf dem Teppich: „Wer suchet, der findet. Aber nur zu zweit.“"},{"type":"goal","at":[8,4]},{"type":"goal","at":[8,3]}],"hint":"Wände blockieren, die Lücke in der Mitte führt durch. Zieht beide ins Ziel. Der Zettel liegt oben im Flur: Wer ihn findet, bekommt einen Punkt. Befehle: rechts 3, runter 2, w a s d oder die Pfeiltasten."},{"id":"02-kueche","title":"Küche – Zwei Schalter","author":"Jonathan","size":9,"story":{"intro":"In der Küche liegen Krümel auf dem Tresen und eine leere Sektflasche steht neben der Spüle. Jemand hat spät gefeiert, und der Pokal war um diese Zeit noch da.","outro":"Der Code passt, die Tür zum Weinkeller ist offen. Im Keller stehen nur Flaschen, aber auch eine Spur: ein Stück Klebeband."},"walls":[[4,0],[4,1],[4,2],[4,3],[4,5],[4,6],[4,7],[4,8],[1,2],[2,2],[1,6],[2,6],[6,2],[7,2],[6,6],[7,6],[6,7],[8,6]],"start":{"jonathan":[0,8],"raphael":[8,0]},"items":[{"type":"switch","at":[3,4],"link":"A"},{"type":"switch","at":[6,4],"link":"A"},{"type":"door","at":[4,4],"link":"A"},{"type":"clue","at":[8,3],"text":"Unter der Sektflasche klebt ein Zettel, nur für Raphael: Der Code der Weinkeller-Tür lautet 2580.","for":"raphael"},{"type":"codedoor","at":[6,8],"code":"2580"},{"type":"goal","at":[7,8]},{"type":"goal","at":[8,8]}],"hint":"Die Tür geht nur auf, wenn ihr beide gleichzeitig auf einem Schalter A steht. Raphael findet den Zettel oben rechts und sagt den Code (sag 2580). Jonathan tippt ihn an der Codetür unten rechts (code 2580)."},{"id":"03-keller","title":"Keller – Die Übergabe","author":"Jonathan","size":9,"story":{"intro":"Im Keller steht die Werkzeugkiste offen, und die Leiter fehlt. Der Schlüssel für die Tür zum Weinregal liegt in der Ecke. Ein Zettel verrät nur halb, wer ihn zuletzt hatte.","outro":"Die Tür zum Weinregal ist auf. Der Pokal ist noch nicht da, aber die Leiter taucht hinter dem Regal auf. Der Fall geht weiter."},"walls":[[2,0],[2,1],[2,2],[2,6],[2,7],[2,8],[4,0],[4,1],[4,2],[4,3],[4,4],[4,5],[4,6],[4,8]],"start":{"jonathan":[0,0],"raphael":[3,7]},"items":[{"type":"key","at":[0,8]},{"type":"clue","at":[3,2],"text":"Auf der Werkzeugkiste klebt ein Zettel, nur für Jonathan: „Die Leiter gehört zurück in den Flur.“","for":"jonathan"},{"type":"door","at":[4,7]},{"type":"goal","at":[7,1]},{"type":"goal","at":[8,1]}],"hint":"Jonathan nimmt den Schlüssel (nimm) und gibt ihn an Raphael weiter (gib, direkt nebeneinander). Wer den Schlüssel trägt, öffnet mit benutze die Tür neben sich. Der Zettel bei der Kiste ist nur für Jonathan."},{"id":"04-bad","title":"Bad – Der beschlagene Spiegel","author":"Raphael","size":9,"story":{"intro":"Hinter dem Keller geht es ins Bad. Der Spiegel ist noch beschlagen: Jemand hat mitten in der Nacht heiß geduscht. Oder etwas sehr Nasses gewaschen? Eine Trennwand teilt den Raum, und der Badschrank hat ein Zahlenschloss.","outro":"Der Badschrank springt auf. Drinnen: nur Handtücher. Aber die nassen Pfotenspuren führen weiter, Richtung Balkontür."},"walls":[[4,0],[4,1],[4,2],[4,3],[4,4],[4,5],[4,6],[4,7],[4,8],[0,6],[1,6],[3,6]],"start":{"jonathan":[8,8],"raphael":[0,0]},"items":[{"type":"clue","at":[6,0],"text":"Im beschlagenen Spiegel steht mit dem Finger geschrieben: 6219. Das Zahlenschloss am Badschrank ist auf Raphaels Seite.","for":"jonathan"},{"type":"clue","at":[3,2],"text":"Nasse Abdrücke am Wannenrand. Klein und rund, für Schuhe viel zu klein."},{"type":"clue","at":[5,5],"text":"Ein Bademantel hängt am Haken, voller Glitzer. Glitzer vom Pokal oder nur von der Party?"},{"type":"codedoor","at":[2,6],"code":"6219"},{"type":"goal","at":[7,2]},{"type":"goal","at":[1,8]}],"hint":"Die Trennwand lässt euch nicht zueinander. Jonathan findet oben im Spiegel den Code und sagt ihn (sag 6219). Raphael steht neben dem Zahlenschloss und tippt code 6219. Dann geht jeder in sein Ziel."},{"id":"05-balkon","title":"Balkon – Licht und Leiter","author":"Raphael","size":9,"story":{"intro":"Kalte Nachtluft. Hier ist sie wieder, die Leiter, die im Keller fehlte: Sie lehnt an der Hauswand, nach oben zur Dachbodenluke. Eine Brüstung teilt den Balkon, und ohne Licht findet hier niemand etwas.","outro":"Der Schlüssel passt, die Luke knarzt auf. Von oben kommt ein leises Geräusch. Schnurrt da etwa jemand?"},"walls":[[4,0],[4,1],[4,2],[4,3],[4,5],[4,6],[4,7],[4,8],[5,2],[6,2],[8,2]],"start":{"jonathan":[8,8],"raphael":[0,8]},"items":[{"type":"switch","at":[3,4],"link":"L"},{"type":"switch","at":[5,4],"link":"L"},{"type":"door","at":[4,4],"link":"L"},{"type":"key","at":[0,0]},{"type":"clue","at":[2,1],"text":"Im Blumenkasten lag der Schlüssel zur Dachbodenluke. Daneben: getigerte Haare. Kommt dir bekannt vor?"},{"type":"clue","at":[1,6],"text":"Ein Zettel am Geländer: „Die Rosi 62 behält ihren Pokal.“ Als ob eine Wohnung etwas behalten könnte. Die Schrift sieht aus wie auf der Party-Einladung.","for":"raphael"},{"type":"clue","at":[7,6],"text":"An den Leitersprossen kleben feine Haare, getigert. Ein Mensch war das nicht.","for":"jonathan"},{"type":"door","at":[7,2]},{"type":"goal","at":[7,0]},{"type":"goal","at":[8,0]}],"hint":"Raphael holt den Schlüssel aus dem Blumenkasten oben links (nimm). Licht gibt es nur, wenn ihr beide auf den Schaltern L an der Brüstung steht. Dann tritt Raphael in die Lücke und gibt Jonathan den Schlüssel (gib). Jonathan öffnet die Luke (benutze), danach beide ins Ziel."},{"id":"06-dachboden","title":"Dachboden – Die Auflösung","author":"Raphael","size":9,"story":{"intro":"Staub, Kisten, ein schmaler Lichtstrahl durch die Dachluke. Hinter einem Lattenverschlag mit Zahlenschloss glänzt etwas Goldenes. Jeder von euch entdeckt hier oben etwas, das der andere nicht sieht. Legt eure Hinweise zusammen, bevor ihr jemanden beschuldigt.","outro":"Fall gelöst! Der Wanderpokal „Rosi 62“ ist wieder da, und gelöst haben ihn Jonathan und Raphael zusammen."},"walls":[[2,2],[3,2],[5,2],[6,2],[2,6],[3,6],[5,6],[6,6],[6,3],[6,4],[2,0],[2,1],[6,0],[6,1]],"start":{"jonathan":[0,8],"raphael":[8,8]},"items":[{"type":"clue","at":[1,4],"text":"Am Lattenverschlag hängt ein Zettel: Code beginnt mit 08… Im Pokal dahinter liegt ein Nest aus einem alten Pulli.","for":"jonathan"},{"type":"clue","at":[3,7],"text":"Rosi, das ist die Rosi 62, also die Wohnung selbst. Wohnungen haben keine Hände. Ein Pokal wandert also nicht von allein die Leiter hinauf.","for":"jonathan"},{"type":"clue","at":[7,4],"text":"Neben der Pokal-Ecke steht ein leerer Futternapf. In den Rand sind zwei Ziffern geritzt: …15. Wer bringt sich bitte Futter mit auf den Dachboden?","for":"raphael"},{"type":"clue","at":[8,1],"text":"Auf einem Foto vom Krimidinner tanzt der Nachbar die ganze Nacht. Er war nie oben.","for":"raphael"},{"type":"clue","at":[4,5],"text":"Getigerte Haare auf jeder Kiste. Dieselben wie auf dem Balkon."},{"type":"goal","at":[3,0]},{"type":"goal","at":[5,0]},{"type":"codedoor","at":[4,2],"code":"0815"}],"hint":"Jeder sieht nur seine eigenen Hinweise. Der Code am Verschlag ist geteilt: Jonathan kennt den Anfang, Raphael das Ende. Tauscht eure Hälften per sag, tippt den Code (code ....), geht beide ins Ziel beim Pokal und beschuldigt gemeinsam: beschuldige <name>.","finale":{"question":"Wer hat den Wanderpokal „Rosi 62“ auf den Dachboden gebracht?","suspects":[{"id":"mieze","name":"Mieze"},{"id":"rosi","name":"Rosi (die Wohnung)"},{"id":"nachbar","name":"Der Nachbar"}],"culprit":"mieze","right":"Mieze blinzelt verschlafen aus dem Pokal. Die WG-Katze hat ihn sich als Bett geholt. Die WG stimmt ab: Der Wanderpokal ist ab sofort ein Katzenbett und bleibt genau hier.","wrong":"Nein, so war es nicht. Schaut noch einmal in eure Notizbücher und sagt euch gegenseitig, was ihr gefunden habt."}}];
+const TEXTE = {"rollenwahl":{"titel":"Wer ermittelt heute?","jonathan":"Jonathan, der rote Kreis. Rund, ruhig, rollt durch jede Tür.","raphael":"Raphael, das blaue Quadrat. Eckig, aber mit Herz.","zuschauer":"Nur zuschauen. Du siehst beide Figuren, aber keine geheimen Hinweise.","belegt":"Diese Figur spielt schon jemand. Nimm die andere oder schau zu.","warten":"Warte auf deine Partnerin oder deinen Partner. Allein ist der Fall nicht zu lösen."},"hilfe":["Bewegen: Pfeiltasten, WASD oder „rechts 3“, „hoch 2“.","Reden: „sag 2580“. Die andere Figur liest mit.","Schlüssel: „nimm“ auf dem Schlüssel, „gib“ direkt neben der anderen Figur, „benutze“ neben der Schlosstür.","Codetür: neben die Tür stellen und „code 1234“ tippen.","Schalter: Eine Schalter-Tür ist nur offen, solange alle passenden Schalter besetzt sind.","Geheime Hinweise sieht nur eine Figur. Was du nicht sagst, weiß der andere nicht.","Im Finale: beide ins Ziel, dann „beschuldige <Name>“."],"fehler":{"wand":"Da ist eine Wand. Auch Detektive gehen nicht durch Wände.","rand":"Weiter geht es nicht, hier endet die Rosi 62.","figur_im_weg":"Da steht schon jemand. Einmal kurz Platz machen, bitte.","tuer_zu":"Die Tür ist zu. Vielleicht braucht es einen Schlüssel, einen Code oder zwei auf den Schaltern.","code_falsch":"Der Code stimmt nicht. Fragt euch gegenseitig, wer welchen Zettel gefunden hat.","code_format":"Ein Code hat genau 4 Ziffern, zum Beispiel: code 1234","keine_codetuer":"Hier ist keine Codetür. Stell dich direkt daneben.","kein_schluessel_hier":"Hier liegt kein Schlüssel.","schon_schluessel":"Du trägst schon einen Schlüssel. Zwei passen nicht in eine Tasche.","kein_schluessel":"Du hast keinen Schlüssel dabei.","nicht_nebeneinander":"Zum Übergeben müsst ihr direkt nebeneinander stehen.","keine_schlosstuer":"Keine Schlosstür neben dir.","tuer_schon_offen":"Die Tür ist schon offen. Einfach durchgehen.","niemand_zu_beschuldigen":"Hier gibt es noch niemanden zu beschuldigen. Erst einmal Spuren sammeln.","unbekannt_verdaechtig":"Diese Person steht nicht auf der Liste der Verdächtigen.","unbekannter_befehl":"Den Befehl kenne ich nicht. Tippe „hilfe“.","keine_rolle":"Wähle zuerst eine Figur. Zuschauer dürfen nicht mitspielen.","verbindung":"Verbindung gerade weg. Dein Zug gilt erst, wenn sie zurück ist.","keine_rechte":"Du darfst hier nur zuschauen. Bitte um Freigabe zum Mitspielen."},"status":{"online":"online","offline":"nicht da","hinweis_gefunden":"Hinweis gefunden! Schau ins Notizbuch.","geheim_fuer":"Geheimer Hinweis für {name}. Frag nach!","raum_geloest":"Raum gelöst! Weiter in den nächsten.","naechster_raum":"Nächster Raum"},"abschluss":{"titel":"Fall gelöst!","text":"Der Wanderpokal „Rosi 62“ ist gefunden und hat einen neuen Zweck: Katzenbett. Gelöst von Jonathan und Raphael, zusammen.","punkte":"{punkte} von {max} Hinweisen gefunden.","nochmal":"Nochmal spielen"}};
+const WHO = ['jonathan', 'raphael'];
+const NAME = { jonathan: 'Jonathan', raphael: 'Raphael' };
+const DIRS = { hoch: [0, -1], runter: [0, 1], links: [-1, 0], rechts: [1, 0] };
+const ALIAS = { w: 'hoch', a: 'links', s: 'runter', d: 'rechts', oben: 'hoch', unten: 'runter', hoch: 'hoch', runter: 'runter', links: 'links', rechts: 'rechts' };
+
+/* ---------- Spielregeln (wie engine.js aus dem Repo, nachgebaut) ---------- */
+const same = (a, b) => a[0] === b[0] && a[1] === b[1];
+const adj = (a, b) => Math.abs(a[0] - b[0]) + Math.abs(a[1] - b[1]) === 1;
+const other = w => w === 'jonathan' ? 'raphael' : 'jonathan';
+
+function freshLevel(li) {
+  const lv = LEVELS[li];
+  return { li, pos: { jonathan: [...lv.start.jonathan], raphael: [...lv.start.raphael] },
+    items: lv.items.map(it => it.type === 'key' ? { holder: null, used: false } : (it.type === 'door' && !it.link) || it.type === 'codedoor' ? { unlocked: false } : it.type === 'clue' ? { by: null } : null),
+    solved: false, done: false, finished: false };
+}
+function newGame() { return { lvl: freshLevel(0), log: [], total: 0 }; }
+function occupant(L, p) { return WHO.find(w => same(L.pos[w], p)) || null; }
+function doorOpen(lv, L, i) {
+  const d = lv.items[i];
+  if (occupant(L, d.at)) return true;
+  if (d.type === 'codedoor' || !d.link) return L.items[i].unlocked;
+  const sw = lv.items.filter(it => it.type === 'switch' && it.link === d.link);
+  return sw.length > 0 && sw.every(s => occupant(L, s.at));
+}
+function canEnter(lv, L, p, who) {
+  if (p[0] < 0 || p[1] < 0 || p[0] > 8 || p[1] > 8) return 'der Rand ist erreicht';
+  if (lv.walls.some(w => same(w, p))) return 'eine Wand blockiert';
+  if (same(L.pos[other(who)], p)) return 'die andere Figur steht im Weg';
+  const di = lv.items.findIndex(it => (it.type === 'door' || it.type === 'codedoor') && same(it.at, p));
+  if (di >= 0 && !doorOpen(lv, L, di)) return 'die Tür ist zu';
+  return null;
+}
+function onGoal(lv, L, w) { return lv.items.some(it => it.type === 'goal' && same(it.at, L.pos[w])); }
+function finish(lv, L) { L.done = onGoal(lv, L, 'jonathan') && onGoal(lv, L, 'raphael') && (!lv.finale || L.solved); }
+function heldKey(L, w) { return L.items.findIndex(s => s && s.holder === w); }
+
+/* Wendet eine Aktion an. Liefert Fehlermeldung oder null; schreibt ins Log. */
+function apply(G, a) {
+  const L = G.lvl, lv = LEVELS[L.li], w = a.who;
+  const log = (t, kind) => { G.log.push({ who: w, t, kind }); if (G.log.length > 80) G.log.shift(); };
+  if (a.t === 'say') { log(a.text, 'say'); return null; }
+  if (a.t === 'reset') { const g = newGame(); G.lvl = g.lvl; G.total = 0; log('startet das Spiel neu'); return null; }
+  if (a.t === 'next') {
+    if (!L.done) return 'Der Raum ist noch nicht gelöst.';
+    if (L.li + 1 >= LEVELS.length) { L.finished = true; return null; }
+    G.total += score(lv, L); G.lvl = freshLevel(L.li + 1); log('geht in den nächsten Raum: ' + LEVELS[L.li + 1].title); return null;
+  }
+  if (L.done && a.t !== 'accuse') return 'Der Raum ist gelöst. Weiter mit „Nächster Raum“.';
+  if (a.t === 'move') {
+    const v = DIRS[a.dir]; let moved = 0, reason = null;
+    for (let k = 0; k < a.n; k++) {
+      const p = L.pos[w], t = [p[0] + v[0], p[1] + v[1]];
+      reason = canEnter(lv, L, t, w); if (reason) break;
+      L.pos[w] = t; moved++;
+      const ci = lv.items.findIndex((it, i) => it.type === 'clue' && same(it.at, t) && L.items[i].by === null);
+      if (ci >= 0) { L.items[ci].by = w; log('findet einen Hinweis'); }
+    }
+    if (!moved) return 'Nicht möglich: ' + reason + '.';
+    log(a.dir + (moved > 1 ? ' ' + moved : '')); finish(lv, L);
+    return reason ? 'Nach ' + moved + ' Schritt(en) gestoppt: ' + reason + '.' : null;
+  }
+  if (a.t === 'take') {
+    if (heldKey(L, w) >= 0) return 'Du trägst schon einen Schlüssel.';
+    const i = lv.items.findIndex((it, j) => it.type === 'key' && same(it.at, L.pos[w]) && L.items[j].holder === null && !L.items[j].used);
+    if (i < 0) return 'Hier liegt kein Schlüssel.';
+    L.items[i].holder = w; log('nimmt den Schlüssel'); return null;
+  }
+  if (a.t === 'give') {
+    const i = heldKey(L, w); if (i < 0) return 'Du hast keinen Schlüssel.';
+    if (!adj(L.pos[w], L.pos[other(w)])) return 'Die andere Figur muss direkt neben dir stehen.';
+    L.items[i].holder = other(w); log('gibt den Schlüssel'); return null;
+  }
+  if (a.t === 'use') {
+    const i = heldKey(L, w); if (i < 0) return 'Du hast keinen Schlüssel.';
+    const d = lv.items.findIndex(it => it.type === 'door' && !it.link && adj(it.at, L.pos[w]));
+    if (d < 0) return 'Keine Schlosstür neben dir.';
+    if (L.items[d].unlocked) return 'Diese Tür ist schon offen.';
+    L.items[d].unlocked = true; L.items[i].holder = null; L.items[i].used = true; log('schließt die Tür auf'); finish(lv, L); return null;
+  }
+  if (a.t === 'code') {
+    const near = lv.items.map((it, i) => i).filter(i => lv.items[i].type === 'codedoor' && adj(lv.items[i].at, L.pos[w]));
+    if (!near.length) return 'Keine Codetür neben dir.';
+    const i = near.find(j => !L.items[j].unlocked && lv.items[j].code === a.code);
+    if (i === undefined) return 'Der Code stimmt nicht. Such weiter nach Hinweisen.';
+    L.items[i].unlocked = true; log('öffnet die Codetür'); return null;
+  }
+  if (a.t === 'accuse') {
+    if (!lv.finale) return 'Hier gibt es niemanden zu beschuldigen.';
+    const q = String(a.name || '').trim().toLowerCase();
+    const s = lv.finale.suspects.find(x => x.id === q || x.name.toLowerCase() === q);
+    if (!s) return 'Unbekannt. Verdächtig sind: ' + lv.finale.suspects.map(x => x.name).join(', ') + '.';
+    log('beschuldigt ' + s.name);
+    if (s.id === lv.finale.culprit) { L.solved = true; finish(lv, L); return null; }
+    return lv.finale.wrong;
+  }
+  return 'Unbekannter Befehl.';
+}
+function score(lv, L) { return lv.items.reduce((n, it, i) => n + (it.type === 'clue' && L.items[i].by ? 1 : 0), 0); }
+
+function parse(text) {
+  let t = text.trim(); if (!t) return null;
+  if (t.startsWith('/')) t = t.slice(1).trim();
+  const [verb0, ...rest] = t.split(/\s+/); const verb = verb0.toLowerCase(); const arg = rest.join(' ');
+  if (ALIAS[verb]) { const n = Math.max(1, Math.min(8, parseInt(arg, 10) || 1)); return { t: 'move', dir: ALIAS[verb], n }; }
+  if (verb === 'sag' || verb === 'sage') return arg ? { t: 'say', text: arg.slice(0, 200) } : { err: 'Was willst du sagen? Zum Beispiel: sag 2580' };
+  if (verb === 'code') return /^\d{4}$/.test(arg) ? { t: 'code', code: arg } : { err: 'Der Code hat 4 Ziffern. Zum Beispiel: code 1234' };
+  if (verb === 'beschuldige') return arg ? { t: 'accuse', name: arg } : { err: 'Wen? Zum Beispiel: beschuldige Mieze' };
+  if (['nimm', 'nehmen'].includes(verb)) return { t: 'take' };
+  if (['gib', 'geben'].includes(verb)) return { t: 'give' };
+  if (['benutze', 'nutze'].includes(verb)) return { t: 'use' };
+  if (verb === 'hilfe') return { info: TEXTE.hilfe.join(' ') };
+  // Alles andere ist eine Chat-Nachricht an den Mitspieler
+  return { t: 'say', text: t.slice(0, 200) };
+}
+
+/* ---------- Zustand, Rolle, Darstellung ---------- */
+const view = { role: null, active: 'jonathan', mode: 'local', run: 'r1', uid: null, confirmed: [], pending: [], peers: {} };
+try { view.role = localStorage.getItem('rosi62-role'); } catch (e) {}
+let G = newGame();
+const $ = id => document.getElementById(id);
+
+function actor() { return view.role === 'both' ? view.active : WHO.includes(view.role) ? view.role : null; }
+/* Figur, die der Mitspieler gerade belegt (nur wenn ich sie nicht selbst habe) */
+function takenByOther(w) { return view.role !== w && Object.values(view.peers).filter(r => r === w).length > (view.role === w ? 1 : 0); }
+function rebuild() {
+  G = newGame();
+  for (const a of [...view.confirmed, ...view.pending]) { try { apply(G, a); } catch (e) {} }
+}
+function render() {
+  const L = G.lvl, lv = LEVELS[L.li], me = actor();
+  $('lv-title').textContent = lv.title;
+  $('lv-meta').textContent = 'Raum ' + (L.li + 1) + '/' + LEVELS.length + ' · von ' + lv.author + ' · Hinweise ' + score(lv, L) + ' · Punkte gesamt ' + (G.total + score(lv, L));
+  const done = L.done;
+  $('story-text').textContent = done ? lv.story.outro : lv.story.intro;
+  $('hint').textContent = done ? '' : lv.hint;
+  $('story').classList.toggle('done', done);
+  const b = $('board'); b.textContent = '';
+  for (let y = 0; y < 9; y++) for (let x = 0; x < 9; x++) {
+    const p = [x, y], c = document.createElement('div'); c.className = 'cell'; c.setAttribute('role', 'gridcell');
+    if (lv.walls.some(w => same(w, p))) c.classList.add('wall');
+    const i = lv.items.findIndex(it => same(it.at, p));
+    if (i >= 0) {
+      const it = lv.items[i], el = document.createElement('div');
+      if (it.type === 'goal') c.classList.add('goal');
+      else if (it.type === 'door' || it.type === 'codedoor') {
+        el.className = 'door' + (it.type === 'codedoor' ? ' code' : '') + (doorOpen(lv, L, i) ? ' open' : '');
+        el.textContent = it.type === 'codedoor' ? '####' : (it.link || 'Schloss'.slice(0, 1));
+        c.appendChild(el);
+      } else if (it.type === 'switch') { el.className = 'switch' + (occupant(L, it.at) ? ' pressed' : ''); c.appendChild(el); const m = document.createElement('span'); m.className = 'mark'; m.textContent = it.link; c.appendChild(m); }
+      else if (it.type === 'key' && L.items[i].holder === null && !L.items[i].used) { el.className = 'key'; c.appendChild(el); }
+      else if (it.type === 'clue') { el.className = 'clue' + (L.items[i].by ? ' found' : ''); c.appendChild(el); }
+    }
+    for (const w of WHO) if (same(L.pos[w], p)) {
+      const pc = document.createElement('div'); pc.className = 'piece ' + w[0] + (w === me ? ' me' : '');
+      pc.setAttribute('aria-label', NAME[w]);
+      if (heldKey(L, w) >= 0) { const k = document.createElement('span'); k.className = 'k'; pc.appendChild(k); }
+      c.appendChild(pc);
+    }
+    b.appendChild(c);
+  }
+  // Rollen
+  $('role-j').className = view.role === 'jonathan' ? 'sel-j' : '';
+  $('role-r').className = view.role === 'raphael' ? 'sel-r' : '';
+  $('role-both').className = view.role === 'both' ? 'primary' : '';
+  $('role-watch').className = view.role === 'zuschauer' ? 'primary' : '';
+  $('role-j').disabled = view.mode === 'live' && takenByOther('jonathan');
+  $('role-r').disabled = view.mode === 'live' && takenByOther('raphael');
+  $('role-note').textContent = !view.role ? 'Wähle deine Figur, dann kannst du spielen.' :
+    view.role === 'both' ? 'Ein Gerät, zwei Figuren. Gerade dran: ' + NAME[view.active] + ' (Tab wechselt).' :
+    view.role === 'zuschauer' ? TEXTE.rollenwahl.zuschauer :
+    'Du steuerst ' + NAME[view.role] + '. Pfeiltasten oder WASD bewegen.';
+  // Notizbuch
+  const nb = $('notes'); nb.textContent = ''; $('nb-who').textContent = me ? '· ' + NAME[me] : '';
+  lv.items.forEach((it, i) => {
+    if (it.type !== 'clue' || !L.items[i].by) return;
+    const li = document.createElement('li'), mine = !it.for || (me && it.for === me) || view.role === 'both';
+    li.className = it.for ? (mine ? 'secret' : 'hidden') : '';
+    li.textContent = mine ? (it.for ? '🔒 nur ' + NAME[it.for] + ': ' : '') + it.text : 'Geheimer Hinweis für ' + NAME[it.for] + '. Frag nach!';
+    nb.appendChild(li);
+  });
+  if (!nb.children.length) { const li = document.createElement('li'); li.className = 'hidden'; li.textContent = 'Noch nichts gefunden. Hinweise liegen als schwarze Zettel im Raum.'; nb.appendChild(li); }
+  // Log
+  const lg = $('log'); lg.textContent = '';
+  for (const e of G.log.slice(-40)) {
+    const li = document.createElement('li'), n = document.createElement('b');
+    if (e.kind !== 'say') li.className = 'ev';
+    n.className = e.who[0]; n.textContent = NAME[e.who] + (e.kind === 'say' ? ': ' : ' ');
+    li.appendChild(n); const s = document.createElement('span'); if (e.kind === 'say') s.className = 'say'; s.textContent = e.kind === 'say' ? '„' + e.t + '“' : e.t; li.appendChild(s);
+    lg.appendChild(li);
+  }
+  lg.scrollTop = lg.scrollHeight;
+  // Finale + Weiter
+  const fin = lv.finale && !L.solved;
+  $('finale').hidden = !fin;
+  if (fin) {
+    $('fin-q').textContent = lv.finale.question;
+    const s = $('fin-sus'); s.textContent = '';
+    lv.finale.suspects.forEach(x => { const bt = document.createElement('button'); bt.type = 'button'; bt.textContent = 'beschuldige ' + x.name; bt.onclick = () => act({ t: 'accuse', name: x.id }); s.appendChild(bt); });
+  }
+  $('next').hidden = !done;
+  $('next-btn').textContent = L.li + 1 >= LEVELS.length ? (L.finished ? TEXTE.abschluss.titel : 'Abschluss') : TEXTE.status.naechster_raum;
+  if (L.finished) {
+    const max = LEVELS.reduce((n, l) => n + l.items.filter(it => it.type === 'clue').length, 0);
+    $('story-text').textContent = TEXTE.abschluss.titel + ' ' + TEXTE.abschluss.text;
+    $('hint').textContent = TEXTE.abschluss.punkte.replace('{punkte}', G.total + score(lv, L)).replace('{max}', max);
+  }
+  if (lv.finale && L.solved) $('story-text').textContent = lv.finale.right + ' ' + (done ? lv.story.outro : 'Jetzt beide ins Ziel beim Pokal.');
+  // Status
+  $('st-mode').textContent = view.mode === 'live' ? 'Live verbunden' : 'Lokal (nur dieses Gerät)';
+  $('st-mode').classList.toggle('on', view.mode === 'live');
+  for (const w of WHO) $(w === 'jonathan' ? 'st-j' : 'st-r').classList.toggle('on', Object.values(view.peers).includes(w) || (view.role === w) || (view.role === 'both'));
+}
+
+function say(text, err) { const m = $('msg'); m.textContent = text || ''; m.classList.toggle('err', !!err); }
+
+/* ---------- Aktionen: lokal sofort, live per db (Zugliste) + room ---------- */
+let seq = 0;
+async function act(a) {
+  const w = actor();
+  if (!w) { say(TEXTE.fehler.keine_rolle, true); return; }
+  if (a.t === 'reset' && net.conn && !net.host) { say('Neu starten kann nur, wer den Raum eröffnet hat.', true); return; }
+  const full = { ...a, who: w, ts: Date.now(), id: (view.uid || 'lokal') + '-' + Date.now().toString(36) + '-' + (seq++), run: view.run };
+  const probe = JSON.parse(JSON.stringify(G));
+  const err = apply(probe, full);
+  const partial = a.t === 'move' && err && err.startsWith('Nach ');
+  const counts = !err || partial || a.t === 'accuse';
+  if (!counts) { say(err, true); return; }
+  say(err || (probe.lvl.done ? 'Raum gelöst! Weiter mit „Nächster Raum“.' : ''), !!err && !partial);
+  if (net.host) { hostAccept(full); }
+  else if (net.conn && net.conn.open) {
+    view.pending.push(full); rebuild(); render();
+    try { net.conn.send({ type: 'zug', a: full }); } catch (e) { say('Zug nicht gesendet. Prüfe die Verbindung.', true); }
+  } else { view.confirmed.push(full); saveLocal(); rebuild(); render(); }
+}
+
+/* ---------- Live zu zweit: Peer-to-Peer (WebRTC über PeerJS) ----------
+   Wer den Raum eröffnet, ist Host und führt die verbindliche Zugliste.
+   Gast schickt Züge an den Host, der Host hängt sie an und verteilt sie an alle. */
+const net = { peer: null, host: false, code: null, conns: [], conn: null, roles: {} };
+const PREFIX = 'rosi62koop-';
+function netSay(t, err) { const m = $('net-msg'); m.textContent = t || ''; m.classList.toggle('err', !!err); }
+function saveLocal() { try { localStorage.setItem('rosi62-zuege', JSON.stringify(view.confirmed.slice(-1000))); } catch (e) {} }
+function loadLocal() { try { const l = JSON.parse(localStorage.getItem('rosi62-zuege') || '[]'); if (Array.isArray(l)) view.confirmed = l.map(cleanZug).filter(Boolean); } catch (e) {} }
+/* Prüft einen Zug und liefert eine bereinigte Kopie (nur bekannte Felder) oder null */
+function cleanZug(a) {
+  if (!a || typeof a !== 'object' || !WHO.includes(a.who) || typeof a.id !== 'string' || a.id.length > 80) return null;
+  const base = { t: a.t, who: a.who, id: a.id, ts: Number(a.ts) || 0, run: typeof a.run === 'string' ? a.run.slice(0, 20) : 'r1' };
+  switch (a.t) {
+    case 'move': return DIRS[a.dir] && Number.isInteger(a.n) && a.n >= 1 && a.n <= 8 ? { ...base, dir: a.dir, n: a.n } : null;
+    case 'say': return typeof a.text === 'string' && a.text.trim() ? { ...base, text: a.text.slice(0, 200) } : null;
+    case 'code': return typeof a.code === 'string' && /^[0-9]{4}$/.test(a.code) ? { ...base, code: a.code } : null;
+    case 'accuse': return typeof a.name === 'string' ? { ...base, name: a.name.slice(0, 40) } : null;
+    case 'take': case 'give': case 'use': case 'next': case 'reset': return base;
+    default: return null;
+  }
+}
+function validZug(a) { return !!cleanZug(a); }
+function trimToReset(list) { let s = 0; list.forEach((a, i) => { if (a.t === 'reset') s = i; }); return list.slice(s); }
+function broadcast(msg) { net.conns.forEach(c => { if (c.open) try { c.send(msg); } catch (e) {} }); }
+/* Host nimmt Züge an. Von Gästen nur für die eigene Figur der Verbindung und ohne Neustart. */
+function hostAccept(raw, conn) {
+  const a = cleanZug(raw);
+  if (!a || view.confirmed.some(x => x.id === a.id)) return;
+  if (conn && (a.who !== net.roles[conn.peer] || a.t === 'reset')) return;
+  view.confirmed = trimToReset([...view.confirmed, a]); saveLocal();
+  broadcast({ type: 'zug', a }); rebuild(); render();
+}
+function sendRoles() { broadcast({ type: 'rollen', roles: Object.values(net.roles) }); view.peers = { ...net.roles }; render(); }
+function newCode() { const A = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; let c = ''; for (let i = 0; i < 5; i++) c += A[Math.floor(Math.random() * A.length)]; return c; }
+function hostRoom(code) {
+  if (typeof Peer === 'undefined') { netSay('Live-Modul nicht geladen. Prüfe die Internetverbindung und lade neu.', true); return; }
+  if (net.peer) try { net.peer.destroy(); } catch (e) {}
+  net.host = true; net.code = code || newCode();
+  try { localStorage.setItem('rosi62-raum', JSON.stringify({ code: net.code, host: true })); } catch (e) {}
+  netSay('Eröffne Raum …');
+  const peer = net.peer = new Peer(PREFIX + net.code);
+  peer.on('open', () => { view.mode = 'live'; if (WHO.includes(view.role)) net.roles.host = view.role; sendRoles(); netSay('Raum-Code: ' + net.code + ' – schick ihn deinem Mitspieler.'); render(); });
+  peer.on('connection', c => {
+    net.conns.push(c);
+    c.on('open', () => { c.send({ type: 'liste', list: view.confirmed }); sendRoles(); });
+    c.on('data', m => {
+      if (!m || typeof m !== 'object') return;
+      if (m.type === 'zug') hostAccept(m.a, c);
+      if (m.type === 'rolle' && (WHO.includes(m.rolle) || m.rolle === null)) {
+        // Eine Figur, die schon jemand anderes hat, wird nicht vergeben
+        const taken = m.rolle && Object.entries(net.roles).some(([k, r]) => k !== c.peer && r === m.rolle);
+        if (m.rolle && !taken) net.roles[c.peer] = m.rolle; else delete net.roles[c.peer];
+        sendRoles();
+      }
+    });
+    c.on('close', () => { net.conns = net.conns.filter(x => x !== c); delete net.roles[c.peer]; sendRoles(); });
+  });
+  peer.on('error', e => {
+    if (e && e.type === 'unavailable-id') { netSay('Code schon vergeben, neuer Raum wird eröffnet …'); hostRoom(); }
+    else netSay('Verbindungsproblem (' + (e && e.type || 'unbekannt') + '). Lade die Seite neu.', true);
+  });
+}
+function joinRoom(code) {
+  if (typeof Peer === 'undefined') { netSay('Live-Modul nicht geladen. Prüfe die Internetverbindung und lade neu.', true); return; }
+  code = String(code || '').trim().toUpperCase();
+  if (!/^[A-Z0-9]{5}$/.test(code)) { netSay('Der Code hat 5 Zeichen.', true); return; }
+  if (net.peer) try { net.peer.destroy(); } catch (e) {}
+  net.host = false; net.code = code;
+  try { localStorage.setItem('rosi62-raum', JSON.stringify({ code, host: false })); } catch (e) {}
+  netSay('Verbinde mit Raum ' + code + ' …');
+  const peer = net.peer = new Peer();
+  peer.on('open', () => {
+    const c = net.conn = peer.connect(PREFIX + code, { reliable: true });
+    c.on('open', () => { view.mode = 'live'; netSay('Verbunden mit Raum ' + code + '.'); if (view.role && view.role !== 'both') c.send({ type: 'rolle', rolle: view.role }); render(); });
+    c.on('data', m => {
+      if (!m || typeof m !== 'object') return;
+      if (m.type === 'liste' && Array.isArray(m.list)) { view.confirmed = trimToReset(m.list.map(cleanZug).filter(Boolean)); }
+      const z = m.type === 'zug' ? cleanZug(m.a) : null; if (z && !view.confirmed.some(x => x.id === z.id)) { view.confirmed = trimToReset([...view.confirmed, z]); }
+      if (m.type === 'rollen' && Array.isArray(m.roles)) { view.peers = Object.fromEntries(m.roles.filter(r => WHO.includes(r)).map((r, i) => ['p' + i, r])); }
+      const ids = new Set(view.confirmed.map(a => a.id)); view.pending = view.pending.filter(p => !ids.has(p.id));
+      rebuild(); render();
+    });
+    c.on('close', () => { view.mode = 'local'; netSay('Verbindung zum Raum getrennt. Mit dem Code erneut beitreten.', true); render(); });
+  });
+  peer.on('error', e => netSay(e && e.type === 'peer-unavailable' ? 'Raum ' + code + ' nicht gefunden. Ist der Host online?' : 'Verbindungsproblem (' + (e && e.type || 'unbekannt') + ').', true));
+}
+function connect() {
+  loadLocal(); rebuild();
+  try { const r = JSON.parse(localStorage.getItem('rosi62-raum') || 'null'); if (r && r.code) { r.host ? hostRoom(r.code) : joinRoom(r.code); } } catch (e) {}
+  render();
+}
+
+/* ---------- Eingaben ---------- */
+function setRole(r) {
+  view.role = r; try { localStorage.setItem('rosi62-role', r); } catch (e) {}
+  const rolle = WHO.includes(r) ? r : null;
+  if (net.host) { if (rolle) net.roles.host = rolle; else delete net.roles.host; sendRoles(); }
+  else if (net.conn && net.conn.open) try { net.conn.send({ type: 'rolle', rolle }); } catch (e) {}
+  render();
+}
+$('host-btn').onclick = () => hostRoom();
+$('join-form').addEventListener('submit', e => { e.preventDefault(); joinRoom($('join-code').value); });
+$('role-j').onclick = () => setRole('jonathan');
+$('role-r').onclick = () => setRole('raphael');
+$('role-both').onclick = () => setRole('both');
+$('role-watch').onclick = () => setRole('zuschauer');
+document.querySelectorAll('[data-dir]').forEach(b => b.onclick = () => act({ t: 'move', dir: b.dataset.dir, n: 1 }));
+document.querySelectorAll('[data-cmd]').forEach(b => b.onclick = () => act({ t: { nimm: 'take', gib: 'give', benutze: 'use' }[b.dataset.cmd] }));
+$('cmd').addEventListener('submit', e => {
+  e.preventDefault(); const p = parse($('cmd-in').value);
+  if (!p) return; if (p.err) { say(p.err, true); return; }
+  if (p.info) { say(p.info, false); $('cmd-in').value = ''; return; }
+  $('cmd-in').value = ''; act(p);
+});
+$('next-btn').onclick = () => act({ t: 'next' });
+let resetArmed = false;
+$('reset').onclick = () => {
+  if (!resetArmed) { resetArmed = true; $('reset').textContent = 'Wirklich? Nochmal klicken'; setTimeout(() => { resetArmed = false; $('reset').textContent = 'Spiel neu starten'; }, 4000); return; }
+  resetArmed = false; $('reset').textContent = 'Spiel neu starten'; act({ t: 'reset' });
+};
+document.addEventListener('keydown', e => {
+  if (e.target && (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA')) return;
+  if (e.key === 'Tab' && view.role === 'both') { e.preventDefault(); view.active = other(view.active); render(); return; }
+  const k = { ArrowUp: 'hoch', ArrowDown: 'runter', ArrowLeft: 'links', ArrowRight: 'rechts', w: 'hoch', a: 'links', s: 'runter', d: 'rechts' }[e.key];
+  if (k) { e.preventDefault(); act({ t: 'move', dir: k, n: 1 }); }
+});
+
+render();
+connect();
+</script>
+</body>
+</html>
