@@ -6,11 +6,13 @@ Eigenständige Spielseite in einer Datei, unabhängig von `game/src` und `build.
 - **Live zu zweit:** Wer „Raum eröffnen“ klickt, ist Host und führt die verbindliche Zugliste. Der Gast tritt mit dem 5-stelligen Code bei. Zwei Wege:
   - **Direkt** per WebRTC über PeerJS (`peerjs@1.5.4` mit SRI). Scheitert zwischen vielen Netzen, weil es keinen TURN-Relay gibt.
   - **Relay** über öffentliche MQTT-Broker per WebSocket (`mqtt@5.10.1` mit SRI): HiveMQ, Mosquitto, EMQX. Der Host hört auf allen, der Gast nimmt den ersten erreichbaren. Topic = SHA-256 aus Salz und Raumcode, der Code liegt also nicht im Klartext beim Broker.
+  - Ein Broker gilt für den Gast erst als verbunden, wenn der Host dort antwortet, sonst nimmt er den nächsten. Im Herzschlag meldet der Gast seinen Stand, bei Abweichung liefert der Host die ganze Zugliste neu (gegen verlorene Nachrichten).
   - Der Gast versucht 5 s direkt, sonst automatisch den Relay. `?relay=1` erzwingt den Relay. Oben steht „Live verbunden (direkt)“ bzw. „(über Relay)“.
   - Rolle und unbestätigte Züge werden alle 4 s nachgesendet, weil der Relay nichts speichert. Jeder Spieler hat eine stabile ID (localStorage), der Host gibt dieselbe ID nach einem Neuladen sofort ihre Figur zurück und bestätigt mit `rolle-ok` („Du spielst …“). Relay-Gäste ohne Lebenszeichen geben ihre Figur nach 10–12 s frei. Ist die gespeicherte Figur belegt und die andere frei, wird automatisch getauscht. Der Raum ist pro Browser-Tab gespeichert (sessionStorage).
 - **Rollen:** Jonathan (roter Kreis), Raphael (blaues Quadrat), „Beide“ (ein Gerät, Tab wechselt) und „Zuschauen“ (ohne geheime Hinweise). Eine Figur, die schon jemand hat, wird nicht doppelt vergeben.
 - **Chat:** Eine normale Zeile im Eingabefeld geht als Chat-Nachricht an den Mitspieler. `/befehl` oder ein bekannter Befehl ohne Schrägstrich steuert die eigene Figur (`/rechts 3`, `/nimm`, `/code 0815`, `/beschuldige mieze`, `hilfe`). Spielereignisse stehen abgesetzt im selben Verlauf.
-- **Ohne Verbindung:** Das Spiel läuft lokal weiter, Fortschritt bleibt im Browser (localStorage).
+- **An Claude senden:** Knopf im Chat-Bereich oder `/claude <frage>` öffnet ein vorausgefülltes GitHub-Issue (Label `spiel:claude`) mit Raum, Positionen, Türen, gefundenen Hinweisen (fremde geheime nur als Platzhalter) und den letzten Ereignissen. Die Agenten antworten dort als Spielleiter. Kein Token in der Seite, der Spieler sendet mit seinem eigenen Konto.
+- **Ohne Verbindung:** Das Spiel läuft lokal weiter. Der Fortschritt bleibt im Browser, pro Raum gespeichert (ein neuer Raum beginnt frisch).
 
 ## Sicherheit und Grenzen
 
@@ -18,7 +20,7 @@ Eigenständige Spielseite in einer Datei, unabhängig von `game/src` und `build.
 - Ein fehlerhafter Zug im Speicher bricht das Nachspielen nicht ab.
 - Fremdtext nur per `textContent`. Kein `innerHTML`, `eval` o. Ä.
 - **Raum-Code ohne Anmeldung:** Wer den Code kennt, kann einer freien Figur beitreten. Für ein Spiel unter Freunden ok, den Code also nur dem Mitspieler schicken.
-- **Datenschutz:** Der direkte Weg (WebRTC) legt die IP-Adressen beider Geräte gegenseitig offen. Beim Relay sehen nur die Broker die IPs. Öffentliche Broker sind Testdienste ohne Garantie. Google Fonts erhält beim Laden die IP.
+- **Datenschutz:** Der direkte Weg (WebRTC) legt die IP-Adressen beider Geräte gegenseitig offen. Beim Relay sehen nur die Broker die IPs. Öffentliche Broker sind Testdienste ohne Garantie. Es werden keine Schriften von außen geladen (nur Systemschriften).
 
 ## Wie getestet
 
