@@ -502,19 +502,23 @@ function hostOnGuest(conn, m) {
   if (m.type === 'zug') hostAccept(m.a, conn);
   if (m.type === 'rolle' && (WHO.includes(m.rolle) || m.rolle === null)) {
     // Eine Figur, die schon jemand anderes hat, wird nicht vergeben
+    // Relay-Gäste ohne Lebenszeichen seit 15 s zählen nicht mehr (z. B. nach einem Neuladen)
+    const stale = k => k.startsWith('mq:') && Date.now() - (net.seen[k] || 0) > 15000;
+    Object.keys(net.roles).forEach(k => { if (k !== conn.peer && net.roles[k] === m.rolle && stale(k)) delete net.roles[k]; });
     const taken = m.rolle && Object.entries(net.roles).some(([k, r]) => k !== conn.peer && r === m.rolle);
+    if (m.rolle && taken) conn.send({ type: 'belegt', rolle: m.rolle });
     if (m.rolle && !taken) net.roles[conn.peer] = m.rolle; else delete net.roles[conn.peer];
     sendRoles();
   }
   if (m.type === 'tschuess') { delete net.roles[conn.peer]; sendRoles(); }
 }
-/* Relay-Gäste, die sich 40 s nicht gemeldet haben, geben ihre Figur frei */
+/* Relay-Gäste, die sich 20 s nicht gemeldet haben, geben ihre Figur frei */
 setInterval(() => {
   if (!net.host) return;
   let changed = false;
-  Object.keys(net.roles).forEach(k => { if (k.startsWith('mq:') && Date.now() - (net.seen[k] || 0) > 40000) { delete net.roles[k]; changed = true; } });
+  Object.keys(net.roles).forEach(k => { if (k.startsWith('mq:') && Date.now() - (net.seen[k] || 0) > 20000) { delete net.roles[k]; changed = true; } });
   if (changed) sendRoles();
-}, 10000);
+}, 5000);
 
 /* Verbindet zum ersten erreichbaren Broker. onReady(client) bei Verbindung, onMessage(topic, text) für Nachrichten. */
 async function connectRelay(onReady, onMessage) {
@@ -603,6 +607,7 @@ function guestOnHost(m) {
   if (m.type === 'liste' && Array.isArray(m.list)) { net.gotList = true; view.confirmed = trimToReset(m.list.map(cleanZug).filter(Boolean)); }
   const z = m.type === 'zug' ? cleanZug(m.a) : null;
   if (z && !view.confirmed.some(x => x.id === z.id)) { view.confirmed = trimToReset([...view.confirmed, z]); }
+  if (m.type === 'belegt' && WHO.includes(m.rolle)) { netSay(TEXTE.rollenwahl.belegt, true); }
   if (m.type === 'rollen' && Array.isArray(m.roles)) { view.peers = Object.fromEntries(m.roles.filter(r => WHO.includes(r)).map((r, i) => ['p' + i, r])); }
   const ids = new Set(view.confirmed.map(a => a.id)); view.pending = view.pending.filter(p => !ids.has(p.id));
   rebuild(); render();
