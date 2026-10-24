@@ -6,18 +6,16 @@
 <style>body{margin:0;font:14px system-ui,sans-serif}[hidden]{display:none!important}</style>
 <title>Rosi 62 Koop</title>
 <link rel="icon" href="data:,">
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Jost:wght@400;500;700&family=IBM+Plex+Mono:wght@400;500&display=swap">
 <style>
 /* Layout: Bauhaus-Plakat – Spielbrett als quadratisches Raster links, Akte (Story, Notizbuch, Befehle) rechts; auf dem Handy untereinander. */
 :root {
   --paper: #EFEBE2; --ink: #1E1D1A; --muted: #5E5A52; --line: #CFC8B9; --tile: #F8F6F1; --wall: #2B2A27;
   --red: #C8372D; --blue: #1E4E9C; --yellow: #E8B520; --ok: #2F6B5E;
   --on-color: #FBFAF6;
-  --display: "Jost", "Futura", "Century Gothic", system-ui, sans-serif;
-  --body: "Jost", system-ui, -apple-system, "Segoe UI", sans-serif;
-  --mono: "IBM Plex Mono", ui-monospace, Menlo, Consolas, monospace;
+  /* Nur Systemschriften: keine Anfrage an Google Fonts (Datenschutz) */
+  --display: "Futura", "Century Gothic", "Avenir Next", "Trebuchet MS", system-ui, sans-serif;
+  --body: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
 }
 @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
   --paper: #1A1917; --ink: #ECE7DC; --muted: #A9A296; --line: #3A3732; --tile: #24221F; --wall: #0E0D0C;
@@ -192,6 +190,7 @@ form.cmd input { flex: 1; min-width: 0; font: inherit; font-family: var(--mono);
       <div class="card">
         <h3>Chat &amp; Verlauf</h3>
         <ul class="log" id="log"></ul>
+        <p class="small" style="margin:10px 0 0">Kommt ihr nicht weiter? <button type="button" id="ask-claude" style="min-height:32px;padding:2px 8px;font-size:12px">An Claude senden</button> oder <code>/claude &lt;frage&gt;</code> öffnet ein vorausgefülltes GitHub-Issue, die Agenten antworten als Spielleiter mit Tipps.</p>
         <p class="small" style="margin:10px 0 0">Prototyp von Raphaels Agent. <button type="button" id="reset" style="min-height:32px;padding:2px 8px;font-size:12px">Spiel neu starten</button></p>
       </div>
     </aside>
@@ -315,6 +314,7 @@ function parse(text) {
   if (['gib', 'geben'].includes(verb)) return { t: 'give' };
   if (['benutze', 'nutze'].includes(verb)) return { t: 'use' };
   if (verb === 'hilfe') return { info: TEXTE.hilfe.join(' ') };
+  if (verb === 'claude') return { claude: arg.slice(0, 300) };
   // Alles andere ist eine Chat-Nachricht an den Mitspieler
   return { t: 'say', text: t.slice(0, 200) };
 }
@@ -454,8 +454,10 @@ const GID = 'g' + Math.random().toString(36).slice(2, 10);
 /* Stabile Spieler-ID über Neuladen hinweg: Der Host gibt einer bekannten ID ihre Figur sofort zurück */
 const PID = (() => { try { let p = localStorage.getItem('rosi62-pid'); if (!/^p[a-z0-9]{6,16}$/.test(p || '')) { p = 'p' + Math.random().toString(36).slice(2, 12); localStorage.setItem('rosi62-pid', p); } return p; } catch (e) { return 'p' + Math.random().toString(36).slice(2, 12); } })();
 function netSay(t, err) { const m = $('net-msg'); m.textContent = t || ''; m.classList.toggle('err', !!err); }
-function saveLocal() { try { localStorage.setItem('rosi62-zuege', JSON.stringify(view.confirmed.slice(-1000))); } catch (e) {} }
-function loadLocal() { try { const l = JSON.parse(localStorage.getItem('rosi62-zuege') || '[]'); if (Array.isArray(l)) view.confirmed = l.map(cleanZug).filter(Boolean); } catch (e) {} }
+/* Spielstand pro Raum speichern, damit ein neuer Raum frisch beginnt */
+function saveKey() { return 'rosi62-zuege-' + (net.code || 'lokal'); }
+function saveLocal() { try { localStorage.setItem(saveKey(), JSON.stringify(view.confirmed.slice(-1000))); } catch (e) {} }
+function loadLocal() { view.confirmed = []; try { const l = JSON.parse(localStorage.getItem(saveKey()) || '[]'); if (Array.isArray(l)) view.confirmed = l.map(cleanZug).filter(Boolean); } catch (e) {} }
 /* Prüft einen Zug und liefert eine bereinigte Kopie (nur bekannte Felder) oder null */
 function cleanZug(a) {
   if (!a || typeof a !== 'object' || !WHO.includes(a.who) || typeof a.id !== 'string' || a.id.length > 80) return null;
@@ -531,35 +533,13 @@ setInterval(() => {
   if (changed) sendRoles();
 }, 3000);
 
-/* Verbindet zum ersten erreichbaren Broker. onReady(client) bei Verbindung, onMessage(topic, text) für Nachrichten. */
-async function connectRelay(onReady, onMessage) {
-  if (typeof mqtt === 'undefined') return;
-  net.base = await relayBase(net.code);
-  const myCode = net.code;
-  for (const url of RELAY_URLS) {
-    if (net.code !== myCode) return;
-    const ok = await new Promise(resolve => {
-      let client;
-      try { client = mqtt.connect(url, { clientId: PREFIX + GID, clean: true, reconnectPeriod: 3000, connectTimeout: 6000 }); } catch (e) { resolve(false); return; }
-      const t = setTimeout(() => { try { client.end(true); } catch (e) {} resolve(false); }, 7000);
-      client.once('connect', () => {
-        clearTimeout(t);
-        if (net.code !== myCode) { client.end(true); resolve(true); return; }
-        net.mq = client; net.broker = url;
-        client.on('message', (tp, buf) => onMessage(tp, String(buf)));
-        onReady(client); resolve(true);
-      });
-      client.on('error', e => console.warn('Relay', url, e && e.message));
-    });
-    if (ok) return;
-  }
-  netSay('Kein Relay erreichbar. Prüfe die Internetverbindung und lade neu.', true);
-}
 
 function hostRoom(code) {
   if (typeof Peer === 'undefined' && typeof mqtt === 'undefined') { netSay('Live-Modul nicht geladen. Prüfe die Internetverbindung und lade neu.', true); return; }
   leaveRoom();
   net.host = true; net.code = code || newCode();
+  // Neuer Raum beginnt frisch, beim Wiederaufnehmen (Neuladen) wird der Stand dieses Raums geladen
+  view.pending = []; loadLocal(); rebuild(); render();
   try { sessionStorage.setItem('rosi62-raum', JSON.stringify({ code: net.code, host: true })); } catch (e) {}
   netSay('Eröffne Raum …');
   const ready = () => {
@@ -655,15 +635,47 @@ function guestConnected(raw, via) {
   }, 4000);
   render();
 }
-function joinRelay() {
+/* Gast über den Relay: Ein Broker gilt erst als verbunden, wenn der Host dort antwortet (Liste kommt).
+   Sonst nächster Broker, und das in Runden, bis der Host gefunden ist. */
+async function joinRelay() {
   if (net.mq || net.relayTrying || typeof mqtt === 'undefined') return;
   net.relayTrying = true;
   netSay('Direkte Verbindung klappt nicht, versuche den Relay …');
-  connectRelay(client => {
-    client.subscribe(topic('h2g'));
-    const conn = { open: true, send: msg => client.publish(topic('g2h'), JSON.stringify({ ...msg, from: GID })) };
-    guestConnected(conn, 'relay');
-  }, (t, txt) => { if (txt.length > 200000) return; let m; try { m = JSON.parse(txt); } catch (e) { return; } if (net.via === 'relay') guestOnHost(m); });
+  const myCode = net.code;
+  net.base = await relayBase(myCode);
+  for (let round = 0; round < 5 && net.code === myCode && !net.conn; round++) {
+    for (const url of RELAY_URLS) {
+      if (net.code !== myCode || net.conn) return;
+      const found = await new Promise(resolve => {
+        let client, done = false;
+        const finish = ok => { if (done) return; done = true; clearTimeout(timer); if (!ok) { try { client && client.end(true); } catch (e) {} } resolve(ok); };
+        const timer = setTimeout(() => finish(false), 12000);
+        try { client = mqtt.connect(url, { clientId: PREFIX + GID, clean: true, reconnectPeriod: 3000, connectTimeout: 6000 }); } catch (e) { finish(false); return; }
+        const conn = { open: true, send: msg => client.publish(topic('g2h'), JSON.stringify({ ...msg, from: GID })) };
+        client.on('error', e => console.warn('Relay', url, e && e.message));
+        client.on('message', (t, buf) => {
+          const txt = String(buf); if (txt.length > 200000) return;
+          let m; try { m = JSON.parse(txt); } catch (e) { return; }
+          if (!done && m && m.type === 'liste') {
+            net.mq = client; net.broker = url;
+            guestConnected(conn, 'relay');
+            finish(true);
+          }
+          if (net.mq === client && net.via === 'relay') guestOnHost(m);
+        });
+        client.once('connect', () => {
+          if (net.code !== myCode) { finish(false); return; }
+          client.subscribe(topic('h2g'), () => {
+            // Host um die Liste bitten, bis er antwortet
+            const ask = () => { if (!done) { conn.send({ type: 'hallo', pid: PID }); setTimeout(ask, 2000); } };
+            ask();
+          });
+        });
+      });
+      if (found) return;
+    }
+  }
+  if (net.code === myCode && !net.conn) { net.relayTrying = false; netSay('Raum ' + myCode + ' nicht gefunden. Ist der Host online? Code prüfen und erneut beitreten.', true); }
 }
 function joinRoom(code) {
   code = String(code || '').replace(/[^A-Za-z0-9]/g, '').toUpperCase();
@@ -671,6 +683,7 @@ function joinRoom(code) {
   if (typeof Peer === 'undefined' && typeof mqtt === 'undefined') { netSay('Live-Modul nicht geladen. Prüfe die Internetverbindung und lade neu.', true); return; }
   leaveRoom();
   net.host = false; net.code = code;
+  view.pending = []; view.confirmed = []; net.gotList = false; rebuild(); render();
   try { sessionStorage.setItem('rosi62-raum', JSON.stringify({ code, host: false })); } catch (e) {}
   netSay('Verbinde mit Raum ' + code + ' …');
   if (FORCE_RELAY || typeof Peer === 'undefined') { joinRelay(); return; }
@@ -724,9 +737,36 @@ $('cmd').addEventListener('submit', e => {
   e.preventDefault(); const p = parse($('cmd-in').value);
   if (!p) return; if (p.err) { say(p.err, true); return; }
   if (p.info) { say(p.info, false); $('cmd-in').value = ''; return; }
+  if (p.claude !== undefined) { $('cmd-in').value = ''; askClaude(p.claude); return; }
   $('cmd-in').value = ''; act(p);
 });
 $('next-btn').onclick = () => act({ t: 'next' });
+
+/* ---------- An Claude senden: vorausgefülltes GitHub-Issue, die Agenten antworten als Spielleiter ----------
+   Kein Token in der Seite: Der Spieler sendet mit seinem eigenen GitHub-Konto. Nur Spielstand, keine geheimen
+   Texte des Mitspielers, keine Raumcodes, IDs oder IPs. */
+function askClaude(frage) {
+  const L = G.lvl, lv = LEVELS[L.li], me = actor();
+  frage = (frage || '').trim() || 'Wir kommen nicht weiter. Kannst du uns einen Tipp geben?';
+  const doors = lv.items.map((it, i) => (it.type === 'door' || it.type === 'codedoor') ? (it.type === 'codedoor' ? 'Codetür' : it.link ? 'Schaltertür ' + it.link : 'Schlosstür') + ' ' + JSON.stringify(it.at) + ': ' + (doorOpen(lv, L, i) ? 'offen' : 'zu') : null).filter(Boolean);
+  const clues = lv.items.map((it, i) => it.type === 'clue' && L.items[i].by ? '- ' + (it.for && it.for !== me && view.role !== 'both' ? '(geheimer Hinweis für ' + NAME[it.for] + ')' : it.text) : null).filter(Boolean);
+  const key = lv.items.findIndex(it => it.type === 'key');
+  const keyState = key < 0 ? 'kein Schlüssel im Raum' : L.items[key].used ? 'benutzt' : L.items[key].holder ? 'bei ' + NAME[L.items[key].holder] : 'liegt auf ' + JSON.stringify(lv.items[key].at);
+  const events = G.log.slice(-5).map(e => '- ' + NAME[e.who] + (e.kind === 'say' ? ': „' + e.t + '“' : ' ' + e.t));
+  const body = ['**Von:** ' + (me ? NAME[me] : 'Zuschauer') + ' (über das Spiel)', '**Frage:** ' + frage, '',
+    '**Raum:** ' + (L.li + 1) + '/' + LEVELS.length + ' ' + lv.title + (L.done ? ' (gelöst)' : ''),
+    '**Punkte:** ' + (G.total + score(lv, L)),
+    '**Positionen:** Jonathan ' + JSON.stringify(L.pos.jonathan) + ', Raphael ' + JSON.stringify(L.pos.raphael),
+    '**Schlüssel:** ' + keyState, '**Türen:** ' + (doors.join('; ') || 'keine'),
+    '**Gefundene Hinweise:**', ...(clues.length ? clues : ['- keine']), '**Letzte Ereignisse:**', ...(events.length ? events : ['- keine']), '',
+    '_Bitte als Spielleiter antworten: erst ein sanfter Tipp, auf Nachfrage konkreter, keine geheimen Hinweise des anderen verraten._'].join(String.fromCharCode(10));
+  const title = '[SPIEL] ' + lv.title + ': ' + frage.slice(0, 80);
+  let url = 'https://github.com/Joniiiixd/Rosi62Agenten/issues/new?labels=' + encodeURIComponent('spiel:claude') + '&title=' + encodeURIComponent(title) + '&body=' + encodeURIComponent(body);
+  if (url.length > 6000) url = url.slice(0, 6000).replace(/%[0-9A-F]?$/i, '');
+  const a = document.createElement('a'); a.href = url; a.target = '_blank'; a.rel = 'noopener'; document.body.appendChild(a); a.click(); a.remove();
+  say('Frage an Claude als GitHub-Issue geöffnet. Abschicken nicht vergessen, die Antwort kommt dort.', false);
+}
+$('ask-claude').onclick = () => askClaude('');
 let resetArmed = false;
 $('reset').onclick = () => {
   if (!resetArmed) { resetArmed = true; $('reset').textContent = 'Wirklich? Nochmal klicken'; setTimeout(() => { resetArmed = false; $('reset').textContent = 'Spiel neu starten'; }, 4000); return; }
