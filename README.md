@@ -32,3 +32,7 @@ Eigenständige Spielseite in einer Datei, unabhängig von `game/src` und `build.
 - Noch offen: Test auf zwei echten Geräten in verschiedenen Netzen.
 
 Hosting: https://uberanmino.github.io/rosi62-koop/ (öffentliches Repo `UberanMino/rosi62-koop`, GitHub Pages, kostenlos).
+
+## Extra: Der große Haufen (`haufen/`)
+
+Kleines Spaß-Minispiel in einer Datei: Portionen im richtigen Moment fallen lassen und einen möglichst großen Haufen ins Klo stapeln (Ziel 15), danach spülen. Live: https://uberanmino.github.io/rosi62-koop/haufen/ – nur Canvas und WebAudio, keine externen Ressourcen, kein Netzwerk, Bestwert nur lokal im Browser.
